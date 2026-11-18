@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FINSITE</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script>document.addEventListener("contextmenu",e=>e.preventDefault());document.addEventListener("keydown",e=>{const k=e.key.toLowerCase();if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&["i","j","c"].includes(k))||(e.ctrlKey&&k==="u"))e.preventDefault()});</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--navy:#0B1F4B;--blue:#2F5BEA;--mist:#EEF2FA;--line:#D9E0EE;--ink:#14213D;--ok:#0E7A4F;--bad:#B3261E}
+*{box-sizing:border-box}body{margin:0;font:16px/1.55 "Plus Jakarta Sans",system-ui,sans-serif;color:var(--ink);background:#fff}
+h1,h2,h3{color:var(--navy);line-height:1.15;margin:0 0 .5em}h1{font-size:clamp(2rem,5vw,3.4rem);font-weight:800;letter-spacing:-.02em}
+header.top{display:flex;justify-content:space-between;align-items:center;padding:14px 5vw;border-bottom:1px solid var(--line)}
+.logo{font-weight:800;font-size:1.3rem;color:var(--navy);text-decoration:none}.logo b{color:var(--blue)}
+a{color:var(--blue)}nav a{margin-left:18px;text-decoration:none;font-weight:500}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 5vw}
+.hero{background:var(--navy);color:#fff;padding:56px 5vw}.hero h1{color:#fff}.hero p{max-width:55ch;opacity:.85}
+.hero .in{max-width:1000px;margin:auto;display:grid;grid-template-columns:1.3fr 1fr;gap:32px;align-items:center}
+@media(max-width:760px){.hero .in{grid-template-columns:1fr}}
+.pass{background:#fff;color:var(--ink);border-radius:14px;padding:22px;text-align:center;border:1px solid var(--line)}
+.pass .id{font-size:2.4rem;font-weight:800;letter-spacing:.18em;color:var(--navy)}.pass .qr{display:flex;justify-content:center;margin:12px 0}
+.btn{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:11px 20px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}
+.btn.alt{background:#fff;color:var(--navy);border:1px solid var(--line)}.btn.sm{padding:6px 12px;font-size:.85rem}.btn.bad{background:var(--bad)}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #9DB4FF;outline-offset:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px;background:#fff}.card.mist{background:var(--mist)}
+label{display:block;font-weight:700;margin:14px 0 4px}label small{font-weight:400;color:#5B6785}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+input[type=checkbox],input[type=radio]{width:auto;margin-right:8px}.opt{display:block;font-weight:400;margin:4px 0}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
+.tabs button{background:none;border:0;padding:10px 14px;font:inherit;font-weight:700;color:#5B6785;cursor:pointer;border-bottom:3px solid transparent}
+.tabs button.on{color:var(--navy);border-color:var(--blue)}
+table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
+.scroll{overflow-x:auto}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1;min-width:120px}.row>.fit{flex:0 0 auto;min-width:0}
+.res{padding:18px;border-radius:10px;margin-top:16px;font-weight:700}.res.ok{background:#E4F5EC;color:var(--ok)}.res.dup{background:#FFF4D6;color:#7A5A00}.res.bad{background:#FDE7E5;color:var(--bad)}
+.pill{font-size:.78rem;padding:2px 9px;border-radius:99px;background:var(--mist);color:var(--navy)}
+.muted{color:#5B6785}.q{border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0;background:var(--mist)}
+video{width:100%;max-width:420px;border-radius:10px;background:#000}
+@media print{body *{visibility:hidden}#printpass,#printpass *{visibility:visible}#printpass{position:absolute;left:0;top:0;width:100%}}
+</style></head><body><div id="app"></div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,createUserWithEmailAndPassword,sendPasswordResetEmail} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,collection,doc,getDoc,getDocs,setDoc,addDoc,updateDoc,query,where,runTransaction,writeBatch,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {getStorage,ref as sref,uploadBytes,getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+/* Firebase web config: project finsite-bcu */
+const cfg={apiKey:"AIzaSyC9rOm64v9-GFTwp16_mTf3S_y0aRKdLq0",authDomain:"finsite-bcu.firebaseapp.com",projectId:"finsite-bcu",storageBucket:"finsite-bcu.firebasestorage.app",messagingSenderId:"990319170375",appId:"1:990319170375:web:92bedf7e57d628fdc87262"};
+const app=initializeApp(cfg),auth=getAuth(app),db=getFirestore(app),store=getStorage(app),auth2=getAuth(initializeApp(cfg,"second"));
+const S={user:null,role:null,tab:null,edit:null,evId:null,regs:[],stream:null,review:null,coords:[]};
+const $=s=>document.querySelector(s),A=$("#app");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtD=d=>d?new Date(d+"T00:00").toLocaleDateString(undefined,{day:"numeric",month:"long",year:"numeric"}):"";
+const TYPES={text:"Short answer",paragraph:"Paragraph",choice:"Multiple choice",checkbox:"Checkboxes",dropdown:"Dropdown",date:"Date",time:"Time",email:"Email",phone:"Phone",number:"Number"};
+const head=()=>`<header class="top"><a class="logo" href="#/">FIN<b>SITE</b></a><nav><a href="#/">Events</a><a href="#/coordinator">Coordinator</a><a href="#/admin">Admin</a></nav></header>`;
+const link=id=>location.origin+location.pathname+"#/e/"+id;
+
+onAuthStateChanged(auth,async u=>{S.user=u;S.role=null;
+  if(u){try{const s=await getDoc(doc(db,"admins",u.uid));S.role=s.exists()?s.data().role:null}catch(e){}}
+  route()});
+window.addEventListener("hashchange",()=>{S.tab=null;S.edit=null;S.review=null;route()});
+async function route(){stopCam();const h=location.hash.replace(/^#\/?/,"");
+  if(h.startsWith("admin"))return admin();if(h.startsWith("coordinator"))return coord();
+  if(h.startsWith("e/"))return eventPage(h.slice(2));return home()}
+
+const lines=t=>String(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
+const CF=[["date","Date","date"],["start","Start time","time"],["end","End time","time"],["venue","Venue"],["contactEmail","Contact email","email"],["contactPhone","Contact number"]];
+const RF=e=>[["factsText","Key facts","One per line, e.g. Team size: 2 members",3],["rulesText","Rules","One rule per line",6],["judgingText","Judging criteria","One per line: Criterion | points",5],["winner","Winner statement","",2]].map(([k,l,h,r])=>`<label>${l} <small>${h}</small><textarea data-k="${k}" rows="${r}">${esc(e[k]||"")}</textarea></label>`).join("");
+const RV=e=>{const f=lines(e.factsText),r=lines(e.rulesText),j=lines(e.judgingText).map(x=>x.split("|").map(s=>s.trim()));
+  return (f.length?`<div class="grid">${f.map(x=>{const i=x.indexOf(":");return `<div class="card mist"><small class="muted">${esc(i>0?x.slice(0,i):"")}</small><br><b>${esc(i>0?x.slice(i+1).trim():x)}</b></div>`}).join("")}</div>`:"")+
+  (r.length?`<h2 style="margin-top:24px">Rules</h2><ol>${r.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:"")+
+  (j.length?`<h2>Judging criteria</h2><table>${j.map(([a,b])=>`<tr><td>${esc(a)}</td><td><b>${esc(b||"")}</b></td></tr>`).join("")}</table>`:"")+
+  (e.winner?`<p class="muted"><i>${esc(e.winner)}</i></p>`:"")+(e.coordNames?`<p class="muted">Coordinators: ${esc(e.coordNames)}</p>`:"")};
+const J=(...a)=>a.join("\n"),T3="Team members' names";
+const FEST=[
+["The Bull Ring",J("Team size: 2 members","Max teams: 10","Duration: 1.5 hrs (3 × 30 min)","Format: Introduction 30 min, Trading session 30 min, Portfolio submission 30 min"),J("Each team receives virtual capital","Invest only from the same predefined stock list","Build a virtual investment portfolio","Trades follow simulated prices or a fixed historical dataset","No real-money trading","Record purchases, sales and closing value; submit the final portfolio before the deadline"),"","","Kiran, Kusuma",10,T3],
+["Algo Masters",J("Team size: 2 members","Max teams: 10","Duration: 1 hour"),J("Build an AI-based financial solution using AI tools","Problems are given on the spot (FinTech related)","On-spot registrations are allowed"),J("Innovation and creativity | 25","Application of AI | 25","Financial relevance | 20","Practical feasibility | 15","Presentation | 15"),"Winner: the most innovative, financially relevant and practical AI solution.","Lakshmi, Vedha, Teju",10,T3],
+["Escape The Vault",J("Team size: 3 members","Max teams: 10","Duration: 1 hour"),J("Solve five commerce and fintech puzzles; each solved puzzle unlocks the next clue","No mobile phones or internet searching","Do not share clues with other teams","Hints are allowed, but marks are deducted for every hint used"),J("Correct answers | 50","Time taken | 20","Logical thinking | 20","Team coordination | 10","Each hint used | −5"),"Winner: all puzzles solved correctly in the shortest time. Ties go to the team with fewer hints.","Jayanth, Pavithra, Sowmya, Harinandan, Rachith",10,T3],
+["Finovation",J("Team size: 3 members","Max teams: 10","Duration: 15 min (10 + 5 Q&A)"),J("Develop one innovative FinTech startup idea","The idea must relate to financial technology","Plagiarism is strictly prohibited","Present your idea, followed by judges' Q&A","Support your idea with an informative poster"),J("Innovation and uniqueness | 25","Financial relevance | 20","Business feasibility | 20","Poster creativity | 15","Technology application | 10","Presentation and Q&A | 10"),"Winner: the most innovative, feasible idea backed by an attractive, informative poster.","Sharan, Gokul, Ramya, Harshitha",10,T3],
+["Meme The Market",J("Participants: 10–15","Duration: 45 minutes","Tools: Canva or permitted tools"),J("Create one original FinTech meme","Relevant, creative and easy to understand","No offensive, discriminatory or inappropriate content","Previously published memes are not allowed","Submit within the time; explain your concept if asked"),J("Creativity and originality | 30","FinTech relevance | 25","Humour and entertainment | 20","Message and understanding | 15","Visual presentation | 10"),"Winner: the most creative, original and entertaining meme with a clear message.","Harish, Keerthi, Renuka",15,""],
+["FinCanvas",J("Participants: 10–15","Duration: 1 hour","Poster size: A3"),J("Open to all interested college students","Poster must be based on FinTech and related innovations","Neat, attractive, informative and easy to understand","Mention your name, department and college","Submit within the deadline; the judges' decision is final"),J("Creativity and innovation | 25","Relevance to FinTech theme | 25","Content and knowledge | 20","Visual appeal and design | 20","Overall presentation | 10"),"","Sandhya, Monika",15,""]];
+const GEN=J("ID card is mandatory: carry your college ID at all times","Report at least 15 minutes before your event starts","Stay within the stated team size for each event","Follow event rules; plagiarism and malpractice are prohibited","Respect coordinators, judges and fellow participants","The judges' decision is final and binding");
+async function seedFest(){if(!confirm("Create the 6 FINSPIRE events as drafts? Events with the same name are skipped."))return;
+  const have=(await allEvents()).map(e=>e.name),Q=n=>[{id:"q1",label:"College / Department",type:"text",required:true,options:[]},...(n?[{id:"q2",label:n,type:"text",required:true,options:[]}]:[])];
+  const C={date:"2026-11-25",venue:"PK Block, Dr.MSBCU",organiser:"M.com Fintech, Dept. of Studies & Research in Commerce, Dr. Manmohan Singh Bengaluru City University",contactEmail:"bcufintech@gmail.com",contactPhone:"9916697170 / 84311 24901",status:"draft",coordinatorUids:[],coordinatorUid:""};
+  for(const [name,factsText,rulesText,judgingText,winner,coordNames,max,team] of FEST){if(have.includes(name))continue;
+    await addDoc(collection(db,"events"),{...C,name,factsText,rulesText,judgingText,winner,coordNames,max,description:`${name} at FINSPIRE, the M.Com Fintech fest.`,questions:Q(team)})}
+  await setDoc(doc(db,"settings","general"),{text:GEN});evTab()}
+const pw=()=>{const c="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";return [...crypto.getRandomValues(new Uint32Array(10))].map(n=>c[n%c.length]).join("")};
+
+/* ============ PUBLIC ============ */
+async function home(){A.innerHTML=head()+`<div class="hero"><div class="in"><div><h1>FIN<span style="color:#FF8A4C">SPIRE</span></h1><p><i>Igniting Ideas. Inspiring Innovation. Empowering Futures.</i></p><p><b>25 November 2026</b> · PK Block, Dr.MSBCU<br>Hosted by M.com Fintech, Department of Studies &amp; Research in Commerce, Dr. Manmohan Singh Bengaluru City University</p><p>Pick an event, register in one form, and get your ID and QR pass by email.</p></div>
+<div class="pass"><div class="muted">Registration ID</div><div class="id">583921</div><div class="muted">Sample pass</div></div></div></div><div class="wrap"><h2>Events</h2><div class="grid" id="evs">Loading…</div><div class="card mist" style="margin-top:28px"><h3>Event coordination</h3><p><b>Faculty coordinator:</b> Deeksha S<br><b>Student coordinators:</b> Megha D, Lakshmi R, Taniska S</p><p>Phone: 9916697170 / 84311 24901<br>Email: <a href="mailto:bcufintech@gmail.com">bcufintech@gmail.com</a></p><p class="muted"><b>ID card is mandatory.</b> Carry your college ID at all times.</p></div></div>`;
+  try{const q=await getDocs(query(collection(db,"events"),where("status","in",["published","closed"])));
+    $("#evs").innerHTML=q.empty?`<p class="muted">No events are open yet.</p>`:q.docs.map(d=>{const e=d.data();return `<div class="card"><span class="pill">${e.status==="closed"?"Registration closed":"Registration open"}</span><h3>${esc(e.name)}</h3><p class="muted">${fmtD(e.date)} · ${esc(e.venue)}</p><a class="btn" href="#/e/${d.id}">View and register</a></div>`}).join("")}
+  catch(e){$("#evs").innerHTML=`<p class="muted">Could not load events. Check your Firebase config and rules.</p>`}}
+
+async function eventPage(id){A.innerHTML=head()+`<div class="wrap">Loading…</div>`;
+  let s,res,gen="";try{const g=await getDoc(doc(db,"settings","general"));if(g.exists())gen=g.data().text}catch(x){}try{s=await getDoc(doc(db,"events",id))}catch(e){}
+  if(!s||!s.exists())return A.innerHTML=head()+`<div class="wrap"><h2>Event not found</h2><p>This event is unpublished or the link is wrong.</p></div>`;
+  try{const r=await getDoc(doc(db,"results",id));if(r.exists()&&r.data().status==="published")res=r.data()}catch(e){}
+  const e=s.data(),closed=e.status!=="published"||(e.deadline&&new Date(e.deadline+"T23:59:59")<new Date());
+  A.innerHTML=head()+`<div class="hero"><div class="in"><div><h1>${esc(e.name)}</h1><p>${fmtD(e.date)} · ${esc(e.start||"")}${e.end?"–"+esc(e.end):""} · ${esc(e.venue)}</p><p>Organised by ${esc(e.organiser||"")}</p></div>
+  <div class="pass"><div class="muted">${closed?"Registration closed":"Registration open"}</div>${e.deadline?`<div class="muted">Closes ${fmtD(e.deadline)}</div>`:""}</div></div></div>
+  <div class="wrap"><p style="white-space:pre-wrap">${esc(e.description)}</p>${RV(e)}${gen?`<h2>General regulations</h2><ol>${lines(gen).map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}<p class="muted">Contact: ${esc(e.contactEmail||"")} ${esc(e.contactPhone||"")}</p>
+  ${res?`<div class="card mist"><h2>Results</h2><p style="white-space:pre-wrap">${esc(res.summary)}</p>${res.fileUrl?`<p><a href="${esc(res.fileUrl)}" target="_blank" rel="noopener">Open results file</a></p>`:""}</div>`:""}
+  <div id="reg">${closed?`<div class="card mist">Registration for this event is closed.</div>`:`<h2>Register</h2><form id="rf" class="card"><label>Full name *<input name="__name" required></label><label>Email address *<input name="__email" type="email" required></label>${(e.questions||[]).map(field).join("")}<p><button class="btn">Register now</button></p><p id="err" class="muted"></p></form>`}</div></div>`;
+  const f=$("#rf");if(f)f.onsubmit=ev=>{ev.preventDefault();submitReg(id,e,f)}}
+
+function field(q){const n="q_"+q.id,r=q.required?"required":"",L=`${esc(q.label)}${q.required?" *":""}`,o=q.options||[];
+  if(q.type==="paragraph")return `<label>${L}<textarea name="${n}" rows="3" ${r}></textarea></label>`;
+  if(q.type==="dropdown")return `<label>${L}<select name="${n}" ${r}><option value="">Choose…</option>${o.map(x=>`<option>${esc(x)}</option>`).join("")}</select></label>`;
+  if(q.type==="choice")return `<label>${L}</label>${o.map((x,i)=>`<label class="opt"><input type="radio" name="${n}" value="${esc(x)}" ${i==0?r:""}>${esc(x)}</label>`).join("")}`;
+  if(q.type==="checkbox")return `<label>${L}</label>${o.map(x=>`<label class="opt"><input type="checkbox" name="${n}" value="${esc(x)}">${esc(x)}</label>`).join("")}`;
+  const t={email:"email",phone:"tel",number:"number",date:"date",time:"time"}[q.type]||"text";
+  return `<label>${L}<input type="${t}" name="${n}" ${r}></label>`}
+
+async function submitReg(evId,e,f){const fd=new FormData(f),btn=f.querySelector("button");btn.disabled=true;
+  const answers={};(e.questions||[]).forEach(q=>{const v=fd.getAll("q_"+q.id);answers[q.label]=q.type==="checkbox"?v.join(", "):(v[0]||"")});
+  const email=fd.get("__email").trim().toLowerCase(),name=fd.get("__name").trim();
+  for(let i=0;i<4;i++){const regId=String(Math.floor(100000+Math.random()*900000)),b=writeBatch(db);
+    b.set(doc(db,"registrations",evId+"_"+regId),{eventId:evId,regId,name,email,answers,checkedIn:false,createdAt:serverTimestamp()});
+    b.set(doc(db,"emails",evId+"_"+encodeURIComponent(email)),{at:serverTimestamp()});
+    try{await b.commit();return showPass(evId,e,{regId,name,email})}catch(x){}}
+  $("#err").textContent="This email may already be registered for this event, or the system is busy. Try again or contact the organiser.";btn.disabled=false}
+
+function showPass(evId,e,r){$("#reg").innerHTML=`<h2>You are registered</h2><p>Your ID and QR code have also been emailed to ${esc(r.email)}.</p><div id="printpass" class="pass" style="max-width:360px"><b>FINSITE · Official pass</b><h3>${esc(e.name)}</h3><div class="id">${r.regId}</div><div class="qr" id="qr"></div>
+  <div><b>${esc(r.name)}</b><br>${esc(r.email)}<br>${fmtD(e.date)} · ${esc(e.venue)}</div><p class="muted">Show this QR code or your ID at the entrance.</p></div><p><button class="btn" onclick="print()">Download pass (PDF)</button></p>`;
+  new QRCode($("#qr"),{text:`FINSITE:${evId}:${r.regId}`,width:170,height:170})}
+
+/* ============ SHARED ============ */
+function login(title){A.innerHTML=head()+`<div class="wrap" style="max-width:420px"><h2>${title}</h2><form id="lf" class="card"><label>Email<input name="e" type="email" required value="${title.startsWith('Admin')?'bcufintech@gmail.com':''}"></label><label>Password<input name="p" type="password" required></label><p><button class="btn">Sign in</button> <a href="#" id="fp" style="margin-left:12px">Forgot password?</a></p><p id="err" class="muted"></p></form></div>`;
+  $("#fp").onclick=async e=>{e.preventDefault();const em=document.querySelector("#lf [name=e]").value.trim();if(!em){$("#err").textContent="Enter your email above first, then click Forgot password.";return}try{await sendPasswordResetEmail(auth,em)}catch(x){}$("#err").textContent="If an account exists for "+em+", a password reset email has been sent. Check your inbox and spam folder."};
+  $("#lf").onsubmit=async ev=>{ev.preventDefault();const f=new FormData(ev.target);try{await signInWithEmailAndPassword(auth,f.get("e"),f.get("p"))}catch(x){$("#err").textContent="Sign-in failed. Check your email and password."}}}
+function denied(need){A.innerHTML=head()+`<div class="wrap"><h2>No access to this page</h2><p>This page is for the ${need}. Your role: <b>${S.role||"none"}</b>. Your UID: <code>${S.user.uid}</code></p><button class="btn alt" id="so">Sign out</button></div>`;$("#so").onclick=()=>signOut(auth)}
+function shell(title,tabs){if(!S.tab||!tabs.some(t=>t[0]===S.tab))S.tab=tabs[0][0];
+  A.innerHTML=head()+`<div class="wrap"><div class="row"><h2>${title}</h2><span class="fit"><button class="btn alt sm" id="so">Sign out</button></span></div><div class="tabs">${tabs.map(t=>`<button class="${S.tab===t[0]?"on":""}" data-t="${t[0]}">${t[1]}</button>`).join("")}</div><div id="pane"></div></div>`;
+  $("#so").onclick=()=>signOut(auth);return t=>{document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;S.edit=null;S.review=null;stopCam();t()})}}
+async function allEvents(){const q=await getDocs(collection(db,"events"));return q.docs.map(d=>({id:d.id,...d.data()}))}
+const evSelect=evs=>`<label>Event<select id="evsel">${evs.map(e=>`<option value="${e.id}" ${e.id===S.evId?"selected":""}>${esc(e.name)}</option>`).join("")}</select></label>`;
+async function sendMails(list){for(let i=0;i<list.length;i+=400){const b=writeBatch(db);list.slice(i,i+400).forEach(m=>b.set(doc(collection(db,"mail")),m));await b.commit()}}
+async function regsOf(id){const q=await getDocs(query(collection(db,"registrations"),where("eventId","==",id)));return q.docs.map(d=>({_id:d.id,...d.data()}))}
+
+function drawRegs(f,isAdmin){const R=S.regs,n=R.filter(r=>r.checkedIn).length,rows=R.filter(r=>(r.name+r.email+r.regId).toLowerCase().includes(f.toLowerCase()));
+  $("#rl").innerHTML=`<p><b>${R.length}</b> registered · <b>${n}</b> attended · ${R.length?Math.round(n/R.length*100):0}% attendance</p><div class="row"><input id="srch" placeholder="Search name, email or ID" value="${esc(f)}"><span class="fit"><button class="btn alt" id="csv">Export CSV</button></span></div>
+  <div class="scroll"><table><tr><th>ID</th><th>Name</th><th>Email</th><th>Status</th>${isAdmin?"<th></th>":""}</tr>${rows.map(r=>`<tr><td>${r.regId}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${r.checkedIn?"Checked in":"Registered"}</td>${isAdmin?`<td>${r.checkedIn?`<button class="btn alt sm" data-u="${r._id}">Reverse</button>`:""}</td>`:""}</tr>`).join("")}</table></div>`;
+  $("#srch").oninput=e=>{drawRegs(e.target.value,isAdmin);const i=$("#srch");i.focus();i.setSelectionRange(99,99)};
+  $("#csv").onclick=()=>{const keys=[...new Set(R.flatMap(r=>Object.keys(r.answers||{})))],c=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+    const out=[["ID","Name","Email",...keys,"Checked in"].map(c).join(",")].concat(R.map(r=>[r.regId,r.name,r.email,...keys.map(k=>r.answers?.[k]),r.checkedIn?"Yes":"No"].map(c).join(",")));
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([out.join("\n")],{type:"text/csv"}));a.download="registrations.csv";a.click()};
+  document.querySelectorAll("[data-u]").forEach(b=>b.onclick=async()=>{if(!confirm("Reverse this check-in?"))return;
+    await updateDoc(doc(db,"registrations",b.dataset.u),{checkedIn:false,checkedInAt:null,checkedInBy:null});
+    await addDoc(collection(db,"auditLogs"),{action:"reverse",reg:b.dataset.u,by:S.user.uid,at:serverTimestamp()});S.regs=await regsOf(S.evId);drawRegs("",true)})}
+
+async function doCheck(evId,regId){const rf=doc(db,"registrations",evId+"_"+regId);
+  try{const r=await runTransaction(db,async t=>{const s=await t.get(rf);if(!s.exists())return{s:"bad"};const d=s.data();if(d.checkedIn)return{s:"dup",d};
+      t.update(rf,{checkedIn:true,checkedInAt:serverTimestamp(),checkedInBy:S.user.uid});return{s:"ok",d}});
+    if(r.s==="dup")addDoc(collection(db,"auditLogs"),{action:"duplicate",reg:rf.id,by:S.user.uid,at:serverTimestamp()});return r}catch(x){return{s:"bad"}}}
+function showRes(r){const m={ok:["ok","Verified. Attendance marked."],dup:["dup","Already checked in."],bad:["bad","Invalid registration."]}[r.s];
+  $("#res").innerHTML=`<div class="res ${m[0]}">${m[1]}${r.d?`<div style="font-weight:500;margin-top:6px">${esc(r.d.name)} · ${r.d.regId}<br>${esc(r.d.email)}</div>`:""}</div>`}
+function verifyPane(){$("#pane").innerHTML=`<div class="card mist"><div class="row"><input id="rid" inputmode="numeric" maxlength="6" placeholder="6-digit registration ID from the email"><span class="fit"><button class="btn" id="vb">Verify ID</button> <button class="btn alt" id="sc">Open QR scanner</button></span></div><div id="cam"></div></div><div id="res"></div>`;
+  $("#vb").onclick=async()=>{const v=$("#rid").value.trim();showRes(/^\d{6}$/.test(v)?await doCheck(S.evId,v):{s:"bad"});$("#rid").value=""};
+  $("#sc").onclick=async()=>{if(!("BarcodeDetector" in window))return $("#cam").innerHTML=`<p class="muted">This browser has no QR scanner. Use Chrome, or enter the ID.</p>`;
+    try{S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})}catch(x){return $("#cam").innerHTML=`<p class="muted">Camera access was blocked. Allow it in browser settings.</p>`}
+    $("#cam").innerHTML=`<video id="vid" playsinline muted></video>`;const v=$("#vid");v.srcObject=S.stream;await v.play();const det=new BarcodeDetector({formats:["qr_code"]});let busy=false;
+    const loop=async()=>{if(!S.stream)return;if(!busy){try{const c=await det.detect(v);if(c[0]){const m=/^FINSITE:([^:]+):(\d{6})$/.exec(c[0].rawValue);busy=true;showRes(m&&m[1]===S.evId?await doCheck(m[1],m[2]):{s:"bad"});setTimeout(()=>busy=false,2500)}}catch(x){}}requestAnimationFrame(loop)};loop()}}
+function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}}
+
+/* ============ EVENT COORDINATOR ============ */
+async function coord(){if(!S.user)return login("Coordinator sign in");if(S.role!=="coordinator")return denied("event coordinator");
+  const q=await getDocs(query(collection(db,"events"),where("coordinatorUids","array-contains",S.user.uid))),evs=q.docs.map(d=>({id:d.id,...d.data()}));
+  const bind=shell("Event coordinator",[["event","Event details"],["regs","Registrants"],["verify","Verification"],["results","Results"]]);
+  if(!evs.length){$("#pane").innerHTML=`<p class="muted">No event is assigned to you yet. Ask the admin to assign you in Events.</p>`;return}
+  if(!S.evId||!evs.some(e=>e.id===S.evId))S.evId=evs[0].id;const E=evs.find(e=>e.id===S.evId);
+  const draw=async()=>{({event:()=>{$("#pane").innerHTML=(evs.length>1?evSelect(evs):"")+`<div class="card"><h3>${esc(E.name)}</h3><p class="muted">Status: ${esc(E.status)}. You can edit details and rules; status and coordinator assignment are admin-only.</p><div class="row">${CF.map(([k,l,t])=>`<label>${l}<input data-k="${k}" type="${t||"text"}" value="${esc(E[k]||"")}"></label>`).join("")}</div><label>Description<textarea data-k="description" rows="4">${esc(E.description||"")}</textarea></label>${RF(E)}<p><button class="btn" id="sv">Save changes</button></p><p id="msg" class="muted"></p></div>`;
+        const s=$("#evsel");if(s)s.onchange=e=>{S.evId=e.target.value;coord()};
+        $("#sv").onclick=async()=>{const d={};document.querySelectorAll("[data-k]").forEach(i=>d[i.dataset.k]=i.value);d.editedBy=S.user.uid;d.editedAt=serverTimestamp();
+          try{await updateDoc(doc(db,"events",E.id),d);Object.assign(E,d);$("#msg").textContent="Saved. Changes are live on the public event page."}catch(x){$("#msg").textContent="Could not save: "+x.message}}},
+      regs:async()=>{$("#pane").innerHTML=`<div id="rl">Loading…</div>`;S.regs=await regsOf(S.evId);drawRegs("",false)},
+      verify:verifyPane,results:()=>resultsPane(E)})[S.tab]()};
+  bind(draw);draw()}
+
+async function resultsPane(E){let cur={};try{const s=await getDoc(doc(db,"results",E.id));if(s.exists())cur=s.data()}catch(e){}
+  const done=cur.status==="published";
+  $("#pane").innerHTML=`<div class="card"><h3>Event results</h3><p>Status: <span class="pill">${cur.status?(done?"Published by admin":"Submitted to admin"):"Not submitted"}</span></p><p class="muted">Results go to the admin only. Participants receive them after the admin publishes.</p>
+  <label>Results summary<textarea id="rsum" rows="6" ${done?"disabled":""}>${esc(cur.summary||"")}</textarea></label>
+  <label>Results file (PDF, sheet or image)<input type="file" id="rfile" ${done?"disabled":""}></label>${cur.fileUrl?`<p><a href="${esc(cur.fileUrl)}" target="_blank" rel="noopener">Current file</a></p>`:""}
+  ${done?"":`<p><button class="btn" id="rsub">Submit results to admin</button></p>`}<p id="msg" class="muted"></p></div>`;
+  const b=$("#rsub");if(b)b.onclick=async()=>{const sum=$("#rsum").value.trim(),f=$("#rfile").files[0];if(!sum&&!f&&!cur.fileUrl)return $("#msg").textContent="Add a summary or a file.";
+    b.disabled=true;try{let url=cur.fileUrl||"";if(f){const r=sref(store,`results/${E.id}/${f.name}`);await uploadBytes(r,f);url=await getDownloadURL(r)}
+      await setDoc(doc(db,"results",E.id),{summary:sum,fileUrl:url,status:"submitted",submittedBy:S.user.uid,submittedAt:serverTimestamp()});resultsPane(E)}
+    catch(x){$("#msg").textContent="Could not submit: "+x.message;b.disabled=false}}}
+
+/* ============ ADMIN ============ */
+async function admin(){if(!S.user)return login("Admin sign in");if(S.role!=="admin")return denied("admin");
+  const bind=shell("Admin",[["monitor","Monitor"],["events","Events"],["regs","Registrations"],["team","Team"]]);
+  const draw=()=>({monitor:monitor,events:evTab,regs:regTab,team:teamTab})[S.tab]();bind(draw);draw()}
+
+async function monitor(){$("#pane").innerHTML="Loading…";
+  const [evs,rq,rs,ad]=await Promise.all([allEvents(),getDocs(collection(db,"registrations")),getDocs(collection(db,"results")),getDocs(collection(db,"admins"))]);
+  const regs=rq.docs.map(d=>d.data()),R={};rs.docs.forEach(d=>R[d.id]=d.data());const N={};ad.docs.forEach(d=>N[d.id]=d.data().name||d.id);
+  $("#pane").innerHTML=`<p class="muted">${evs.length} events · ${regs.length} registrations · ${regs.filter(r=>r.checkedIn).length} attended</p><div class="scroll"><table><tr><th>Event</th><th>Coordinator</th><th>Registered</th><th>Attended</th><th>Results</th><th>Certificates</th><th></th></tr>${evs.map(e=>{const r=regs.filter(x=>x.eventId===e.id);
+    return `<tr><td>${esc(e.name)}<br><span class="pill">${esc(e.status)}</span></td><td>${esc((e.coordinatorUids||[]).map(u=>N[u]).filter(Boolean).join(", ")||"Not assigned")}</td><td>${r.length}</td><td>${r.filter(x=>x.checkedIn).length}</td><td>${R[e.id]?esc(R[e.id].status):"none"}</td><td>${e.certSentAt?"Sent":"Not sent"}</td>
+    <td><button class="btn alt sm" data-r="${e.id}">Review</button></td></tr>`}).join("")}</table></div><div id="rv"></div>`;
+  document.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>review(evs.find(e=>e.id===b.dataset.r),R[b.dataset.r]));
+  if(S.review){const e=evs.find(x=>x.id===S.review);if(e)review(e,R[e.id])}}
+
+async function review(E,res){S.review=E.id;const regs=await regsOf(E.id),att=regs.filter(r=>r.checkedIn);
+  $("#rv").innerHTML=`<div class="card" style="margin-top:18px"><h3>${esc(E.name)}</h3><p>${regs.length} registered · ${att.length} attended</p>
+  <h3>Results</h3>${res?`<p>Status: <span class="pill">${esc(res.status)}</span></p><p style="white-space:pre-wrap">${esc(res.summary)}</p>${res.fileUrl?`<p><a href="${esc(res.fileUrl)}" target="_blank" rel="noopener">Open results file</a></p>`:""}`:`<p class="muted">The coordinator has not submitted results yet.</p>`}
+  <p class="row"><button class="btn" id="pub" ${!res||res.status==="published"?"disabled":""}>${res&&res.status==="published"?"Results published":"Publish results and email participants"}</button>
+  <button class="btn alt" id="cert" ${att.length?"":"disabled"}>Send participation certificates (${att.length})</button></p><p id="msg" class="muted"></p></div>`;
+  $("#pub").onclick=async()=>{if(!confirm(`Publish results and email ${regs.length} registered participants?`))return;
+    await updateDoc(doc(db,"results",E.id),{status:"published",publishedAt:serverTimestamp(),publishedBy:S.user.uid});
+    await sendMails(regs.map(r=>({to:r.email,message:{subject:`Results published: ${E.name}`,html:`<div style="font-family:Arial;max-width:520px"><h2 style="color:#0B1F4B">${esc(E.name)}: results</h2><p>Hi ${esc(r.name)},</p><p style="white-space:pre-wrap">${esc(res.summary)}</p>${res.fileUrl?`<p><a href="${esc(res.fileUrl)}">Results file</a></p>`:""}<p><a href="${link(E.id)}">View on FINSITE</a></p></div>`}})));
+    $("#msg").textContent=`Published and queued ${regs.length} emails.`;monitor()};
+  $("#cert").onclick=async()=>{if(E.certSentAt&&!confirm("Certificates were already sent. Send again?"))return;if(!confirm(`Email certificates to ${att.length} attendees?`))return;
+    await sendMails(att.map(r=>({to:r.email,message:{subject:`Your participation certificate: ${E.name}`,html:`<div style="border:8px double #0B1F4B;padding:36px;text-align:center;font-family:Georgia,serif;max-width:580px;margin:auto"><div style="color:#2F5BEA;font-weight:700">FINSITE</div><h1 style="color:#0B1F4B">Certificate of Participation</h1><p>This is to certify that</p><h2>${esc(r.name)}</h2><p>participated in</p><h3>${esc(E.name)}</h3><p>${fmtD(E.date)} · ${esc(E.venue)}</p><p>Organised by ${esc(E.organiser||"")}</p></div>`}})));
+    await updateDoc(doc(db,"events",E.id),{certSentAt:serverTimestamp()});$("#msg").textContent=`Certificates queued for ${att.length} attendees.`;monitor()}}
+
+async function evTab(){if(S.edit)return editor();const evs=await allEvents();
+  S.coords=(await getDocs(collection(db,"admins"))).docs.filter(d=>d.data().role==="coordinator").map(d=>({id:d.id,name:d.data().name||d.id}));
+  $("#pane").innerHTML=`<p class="row"><button class="btn" id="new">Create event</button><button class="btn alt" id="seed">Import FINSPIRE events</button></p><div class="grid">${evs.map(e=>`<div class="card"><span class="pill">${esc(e.status)}</span><h3>${esc(e.name)}</h3><p class="muted">${fmtD(e.date)}</p><p class="row"><button class="btn alt sm" data-e="${e.id}">Edit</button><a class="btn alt sm" href="#/e/${e.id}" target="_blank">Public link</a></p></div>`).join("")||`<p class="muted">No events yet. Create your first event.</p>`}</div>`;
+  $("#seed").onclick=seedFest;{const g=await getDoc(doc(db,"settings","general")).catch(()=>null);$("#pane").insertAdjacentHTML("beforeend",`<div class="card mist" style="margin-top:18px"><h3>General regulations</h3><textarea id="gen" rows="6">${esc(g&&g.exists()?g.data().text:"")}</textarea><p><button class="btn" id="gsv">Save regulations</button></p></div>`);$("#gsv").onclick=async()=>{await setDoc(doc(db,"settings","general"),{text:$("#gen").value});$("#gsv").textContent="Saved"}}
+  $("#new").onclick=()=>{S.edit={id:"",questions:[{id:"q1",label:"College / Organisation",type:"text",required:true,options:[]}],status:"draft"};evTab()};
+  document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{S.edit={id:b.dataset.e,...evs.find(e=>e.id===b.dataset.e)};evTab()})}
+
+function editor(){const e=S.edit,F=(k,l,t="text")=>`<label>${l}<input data-k="${k}" type="${t}" value="${esc(e[k]||"")}"></label>`;
+  $("#pane").innerHTML=`<div class="card"><h3>${e.id?"Edit event":"New event"}</h3>${F("name","Event name")}<div class="row">${F("date","Date","date")}${F("start","Start time","time")}${F("end","End time","time")}</div>${F("venue","Venue")}${F("organiser","Organiser")}<div class="row">${F("contactEmail","Contact email","email")}${F("contactPhone","Contact number")}</div><div class="row">${F("deadline","Registration deadline","date")}${F("max","Maximum participants","number")}</div>
+  <label>Description<textarea data-k="description" rows="4">${esc(e.description||"")}</textarea></label>
+  <div class="row"><label>Status<select data-k="status">${["draft","published","closed"].map(s=>`<option ${e.status===s?"selected":""}>${s}</option>`).join("")}</select></label>
+  </div><label>Coordinators <small>(they can edit this event's details and rules)</small></label>${S.coords.map(c=>`<label class="opt"><input type="checkbox" data-c value="${c.id}" ${(e.coordinatorUids||[]).includes(c.id)?"checked":""}>${esc(c.name)}</label>`).join("")||`<p class="muted">Create coordinator logins in the Team tab first.</p>`}${F("coordNames","Coordinator names shown publicly")}${RF(e)}
+  <h3 style="margin-top:22px">Registration form</h3><p class="muted">Name and email are always collected. Add your own questions below.</p><div id="qs">${e.questions.map((q,i)=>`<div class="q" data-i="${i}"><div class="row"><input data-f="label" value="${esc(q.label)}" placeholder="Question"><select data-f="type">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${q.type===k?"selected":""}>${v}</option>`).join("")}</select>
+  <label class="opt fit"><input type="checkbox" data-f="required" ${q.required?"checked":""}>Required</label></div>${["choice","checkbox","dropdown"].includes(q.type)?`<input data-f="options" value="${esc((q.options||[]).join(", "))}" placeholder="Options, separated by commas" style="margin-top:6px">`:""}
+  <div class="row" style="margin-top:6px"><span class="fit"><button class="btn alt sm" data-a="up">Move up</button> <button class="btn alt sm" data-a="dup">Duplicate</button> <button class="btn alt sm" data-a="del">Delete</button></span></div></div>`).join("")}</div>
+  <p><button class="btn alt" id="addq">Add question</button></p><p class="row"><button class="btn" id="save">Save event</button><button class="btn alt" id="cancel">Cancel</button></p><p id="msg" class="muted"></p></div>`;
+  const pull=()=>{document.querySelectorAll("[data-k]").forEach(i=>e[i.dataset.k]=i.value);e.coordinatorUids=[...document.querySelectorAll("[data-c]:checked")].map(i=>i.value);e.coordinatorUid=e.coordinatorUids[0]||"";
+    document.querySelectorAll("#qs .q").forEach(d=>{const q=e.questions[d.dataset.i];d.querySelectorAll("[data-f]").forEach(i=>{const f=i.dataset.f;q[f]=f==="required"?i.checked:f==="options"?i.value.split(",").map(x=>x.trim()).filter(Boolean):i.value})})};
+  document.querySelectorAll("#qs select[data-f=type]").forEach(s=>s.onchange=()=>{pull();editor()});
+  document.querySelectorAll("#qs [data-a]").forEach(b=>b.onclick=()=>{pull();const i=+b.closest(".q").dataset.i,a=b.dataset.a,qs=e.questions;
+    if(a==="del")qs.splice(i,1);if(a==="dup")qs.splice(i+1,0,{...qs[i],id:"q"+Date.now()});if(a==="up"&&i>0)[qs[i-1],qs[i]]=[qs[i],qs[i-1]];editor()});
+  $("#addq").onclick=()=>{pull();e.questions.push({id:"q"+Date.now(),label:"",type:"text",required:false,options:[]});editor()};
+  $("#cancel").onclick=()=>{S.edit=null;evTab()};
+  $("#save").onclick=async()=>{pull();if(!e.name)return $("#msg").textContent="Enter an event name.";const {id,...data}=e;
+    try{const r=id?doc(db,"events",id):doc(collection(db,"events"));await setDoc(r,data,{merge:true});S.edit=null;evTab()}catch(x){$("#msg").textContent="Could not save: "+x.message}}}
+
+async function regTab(){const evs=await allEvents();if(!evs.length)return $("#pane").innerHTML=`<p class="muted">Create an event first.</p>`;
+  S.evId=S.evId||evs[0].id;$("#pane").innerHTML=evSelect(evs)+`<div id="rl">Loading…</div>`;
+  const load=async()=>{S.regs=await regsOf(S.evId);drawRegs("",true)};$("#evsel").onchange=e=>{S.evId=e.target.value;load()};load()}
+
+async function teamTab(){const [aq,evs]=await Promise.all([getDocs(collection(db,"admins")),allEvents()]),T=aq.docs.map(d=>({id:d.id,...d.data()}));
+  $("#pane").innerHTML=`<div class="card"><h3>Create login and assign events</h3><p class="muted">Creates the account, sets the password and assigns events in one step. Share the credentials yourself; passwords are not stored.</p>
+  <div class="row"><input id="tn" placeholder="Name"><input id="te" type="email" placeholder="Email (login)"><input id="tp" placeholder="Password (min 6)" value="${pw()}"><select id="tr"><option value="coordinator">Event coordinator</option><option value="admin">Admin</option></select></div>
+  <label>Assign events</label>${evs.map(e=>`<label class="opt"><input type="checkbox" data-ev="${e.id}">${esc(e.name)}</label>`).join("")||`<p class="muted">No events yet.</p>`}
+  <p><button class="btn" id="ta">Create login and assign</button></p><div id="cred"></div></div>
+  <div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Events</th><th></th></tr>${T.map(t=>`<tr><td>${esc(t.name||"")}</td><td>${esc(t.email||"")}</td><td>${esc(t.role)}</td><td>${esc(evs.filter(e=>(e.coordinatorUids||[]).includes(t.id)).map(e=>e.name).join(", "))}</td><td>${t.email?`<button class="btn alt sm" data-rp="${esc(t.email)}">Send reset email</button>`:""}</td></tr>`).join("")}</table></div>`;
+  document.querySelectorAll("[data-rp]").forEach(b=>b.onclick=async()=>{try{await sendPasswordResetEmail(auth,b.dataset.rp);b.textContent="Sent"}catch(x){b.textContent="Failed"}});
+  $("#ta").onclick=async()=>{const n=$("#tn").value.trim(),em=$("#te").value.trim().toLowerCase(),p=$("#tp").value,r=$("#tr").value,ids=[...document.querySelectorAll("[data-ev]:checked")].map(i=>i.dataset.ev);
+    if(!n||!em||p.length<6)return $("#cred").innerHTML=`<p class="muted">Enter a name, an email and a password of at least 6 characters.</p>`;
+    $("#ta").disabled=true;
+    try{const u=await createUserWithEmailAndPassword(auth2,em,p);await signOut(auth2);await setDoc(doc(db,"admins",u.user.uid),{name:n,email:em,role:r});
+      for(const id of ids){const e=evs.find(x=>x.id===id),l=[...new Set([...(e.coordinatorUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{coordinatorUids:l,coordinatorUid:l[0]})}
+      const txt=`FINSITE login\nURL: ${location.origin+location.pathname}#/${r==="admin"?"admin":"coordinator"}\nEmail: ${em}\nPassword: ${p}`;
+      await teamTab();$("#cred").innerHTML=`<div class="res ok"><pre style="margin:0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
+    catch(x){$("#cred").innerHTML=`<p class="muted">Could not create: ${esc(x.message)}</p>`;$("#ta").disabled=false}}}
+</script></body></html>
