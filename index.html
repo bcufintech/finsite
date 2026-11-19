@@ -5,9 +5,8 @@
 <title>FINSPIRE · FINSITE</title>
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="preconnect" href="https://firestore.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
-<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,600;6..96,700;6..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <style>
 :root{--navy:#1B1340;--blue:#7C3AED;--mist:#F5F0FF;--line:#E4DAF7;--ink:#1E1B2E;--ok:#0E7A4F;--bad:#B3261E}
 *{box-sizing:border-box}body{margin:0;font:16px/1.55 "Plus Jakarta Sans",system-ui,sans-serif;color:var(--ink);background:#FBF9FF}
@@ -107,6 +106,12 @@ label{font-size:.92rem}
 .pass{box-shadow:0 26px 44px -26px rgba(5,35,27,.75)}
 @media(max-width:560px){.hero{padding:58px 5vw 54px}.wrap{padding:20px 4.5vw}th,td{padding:9px 8px}.tabs button{padding:10px 12px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* ===== fixes ===== */
+header.top{backdrop-filter:none;background:rgba(238,243,239,.97)}.datecard{backdrop-filter:none}.hero h1{text-shadow:none}
+.tabs{flex-wrap:wrap;overflow:visible}.tabs i{display:none}.tabs button.on{box-shadow:inset 0 -3px 0 var(--gold)}
+.row{align-items:flex-end}.row>label{margin-top:0}.row>button,.row>.btn{flex:0 0 auto}.row>h2{align-self:center}.row>.fit{align-self:center}
+.scroll table{min-width:560px}td{vertical-align:top;overflow-wrap:anywhere}pre{background:#0B2B23!important}
+@media(max-width:760px){.tabs{flex-wrap:nowrap;overflow-x:auto}.datecard{padding:16px 24px;justify-self:start}}
 </style></head><body><div id="app"></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -124,7 +129,7 @@ const fmtD=d=>d?new Date(d+"T00:00").toLocaleDateString(undefined,{day:"numeric"
 const TYPES={text:"Short answer",paragraph:"Paragraph",choice:"Multiple choice",checkbox:"Checkboxes",dropdown:"Dropdown",date:"Date",time:"Time",email:"Email",phone:"Phone",number:"Number"};
 const head=()=>`<header class="top"><a class="logo" href="#/"><i class="gem"></i><span>FIN<b>SITE</b></span></a></header>`;
 const foot=()=>`<footer class="foot"><p>Faculty coordinator: Deeksha S · Student coordinators: Megha D, Lakshmi R, Taniska S</p><p>Phone: 9916697170 / 84311 24901 · <a href="mailto:bcufintech@gmail.com">bcufintech@gmail.com</a></p><p>ID card is mandatory. Carry your college ID at all times.</p><p style="font-size:.68rem;opacity:.7;margin-top:10px"><a href="#/coordinator">Coordinator</a> · <a href="#/desk">Desk</a> · <a href="#/admin">Admin</a></p></footer>`;
-const link=id=>location.origin+location.pathname+"#/e/"+id;
+const link=id=>SITE()+"#/e/"+id;
 
 const isStaff=()=>/^#\/?(admin|coordinator|desk)/.test(location.hash);
 onAuthStateChanged(auth,async u=>{S.user=u;S.role=null;S.err="";
@@ -141,6 +146,7 @@ async function route(){stopCam();const h=location.hash.replace(/^#\/?/,"");
 
 const safe=v=>typeof v==="string"&&/^[=+\-@]/.test(v)?"'"+v:v;
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
+const loadQR=()=>window.QRCode?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
 const xl=async(rows,name)=>{await loadX();const w=XLSX.utils.book_new();XLSX.utils.book_append_sheet(w,XLSX.utils.json_to_sheet(rows.map(o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,safe(v)])))),"Data");XLSX.writeFile(w,name+".xlsx")};
 const lines=t=>String(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
 const CF=[["date","Date","date"],["start","Start time","time"],["end","End time","time"],["venue","Venue"],["contactEmail","Contact email","email"],["contactPhone","Contact number"]];
@@ -170,7 +176,7 @@ const dl=(blob,name)=>{const a=document.createElement("a");a.href=URL.createObje
 const pw=()=>{const c="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";return [...crypto.getRandomValues(new Uint32Array(10))].map(n=>c[n%c.length]).join("")};
 
 /* ============ PUBLIC ============ */
-async function home(){A.innerHTML=head()+`<div class="hero"><div class="in"><div><h1>FIN<span style="color:#FBBF24">SPIRE</span></h1><p><i>Igniting Ideas. Inspiring Innovation. Empowering Futures.</i></p><p>Hosted by M.com Fintech, Department of Studies &amp; Research in Commerce, Dr. Manmohan Singh Bengaluru City University</p><p>Pick an event, register in one form, and get your ID and QR pass by email.</p><p><button class="btn gold" id="browse">Browse events</button></p></div>
+async function home(){A.innerHTML=head()+`<div class="hero"><div class="in"><div><h1>FIN<span style="color:#FBBF24">SPIRE</span></h1><p><i>Igniting Ideas. Inspiring Innovation. Empowering Futures.</i></p><p>Hosted by M.com Fintech, Department of Studies &amp; Research in Commerce, Dr. Manmohan Singh Bengaluru City University</p><p>Pick an event, register in one form, and get your ID and QR pass instantly.</p><p><button class="btn gold" id="browse">Browse events</button></p></div>
 <div class="datecard"><small>Save the date</small><b>25</b><span>November 2026</span><em>PK Block, Dr.MSBCU</em></div></div></div><div class="wrap"><h2>Events</h2><div class="grid" id="evs">Loading…</div></div>${foot()}`;
   $("#browse").onclick=()=>$("#evs").scrollIntoView({behavior:"smooth",block:"start"});
   try{const c=JSON.parse(sessionStorage.getItem("hv")||"null");if(c&&Date.now()-c.t<120000)return void($("#evs").innerHTML=c.h);const q=await getDocs(query(collection(db,"events"),where("status","in",["published","closed"])));
@@ -210,9 +216,9 @@ async function submitReg(evId,e,f){const fd=new FormData(f),btn=f.querySelector(
     try{showPass(evId,e,{regId,name,email})}catch(x){console.error(x)}return}
   console.error(last);reset(last&&(last.code==="unavailable"||last.code==="deadline-exceeded")?"No connection. Check your internet and try again.":"This email may already be registered for this event, or registration has closed. If not, try again or contact the organiser.")}
 
-function showPass(evId,e,r){$("#reg").innerHTML=`<h2>You are registered</h2><p>Your ID and QR code have also been emailed to ${esc(r.email)}.</p><div id="printpass" class="pass" style="max-width:360px"><b>FINSITE · Official pass</b><h3>${esc(e.name)}</h3><div class="id">${r.regId}</div><div class="qr" id="qr"></div>
+function showPass(evId,e,r){$("#reg").innerHTML=`<h2>You are registered</h2><p>Take a screenshot or download this pass and keep it safe. The organiser can also email your ID and QR code to ${esc(r.email)}.</p><div id="printpass" class="pass" style="max-width:360px"><b>FINSITE · Official pass</b><h3>${esc(e.name)}</h3><div class="id">${r.regId}</div><div class="qr" id="qr"></div>
   <div><b>${esc(r.name)}</b><br>${esc(r.email)}<br>${fmtD(e.date)} · ${esc(e.venue)}</div><p class="muted">Show this QR code or your ID at the entrance.</p></div><p><button class="btn" id="prn">Download pass (PDF)</button></p>`;$("#prn").onclick=()=>window.print();
-  new (window.QRCode||function(){})($("#qr"),{text:`FINSITE:${evId}:${r.regId}`,width:170,height:170})}
+  loadQR().then(()=>new QRCode($("#qr"),{text:`FINSITE:${evId}:${r.regId}`,width:170,height:170})).catch(()=>{})}
 
 /* ============ SHARED ============ */
 function login(title){A.innerHTML=head()+`<div class="wrap narrow" style="max-width:440px"><h2>${title}</h2><form id="lf" class="card"><label>Email<input name="e" type="email" autocomplete="username" required></label><label>Password<input name="p" type="password" autocomplete="current-password" required></label><p><button class="btn">Sign in</button></p><p id="err" class="muted"></p></form></div>`;
@@ -221,9 +227,8 @@ function login(title){A.innerHTML=head()+`<div class="wrap narrow" style="max-wi
 function denied(need){A.innerHTML=head()+`<div class="wrap"><h2>No access to this page</h2><p>This page is for the ${need}. Your role: <b>${esc(S.role||"none")}</b>. Your UID: <code>${esc(S.user.uid)}</code></p>${S.err?`<p style="color:#b00020"><b>Reason:</b> ${esc(S.err)}</p>`:""}<button class="btn alt" id="so">Sign out</button></div>`;$("#so").onclick=()=>signOut(auth)}
 function shell(title,tabs){if(!S.tab||!tabs.some(t=>t[0]===S.tab))S.tab=tabs[0][0];
   A.innerHTML=head()+`<div class="wrap"><div class="row"><h2>${title}</h2><span class="fit"><button class="btn alt sm" id="so">Sign out</button></span></div><div class="tabs">${tabs.map(t=>`<button class="${S.tab===t[0]?"on":""}" data-t="${t[0]}">${t[1]}</button>`).join("")}</div><div id="pane"></div></div>`;
-  const bar=document.createElement("i"),mv=()=>{const on=$(".tabs button.on");if(on){bar.style.left=on.offsetLeft+"px";bar.style.width=on.offsetWidth+"px"}};
-  $(".tabs").append(bar);bar.style.transition="none";mv();bar.offsetWidth;bar.style.transition="";document.fonts&&document.fonts.ready.then(()=>{bar.style.transition="none";mv();bar.offsetWidth;bar.style.transition=""});window.onresize=mv;{const on=$(".tabs button.on");on&&on.scrollIntoView({inline:"center",block:"nearest"})}
-  $("#so").onclick=()=>signOut(auth);return t=>{document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;S.edit=null;S.review=null;stopCam();document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));mv();b.scrollIntoView({inline:"center",block:"nearest"});t()})}}
+  {const on=$(".tabs button.on");on&&on.scrollIntoView({inline:"center",block:"nearest"})}
+  $("#so").onclick=()=>signOut(auth);return t=>{document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;S.edit=null;S.review=null;stopCam();document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));b.scrollIntoView({inline:"center",block:"nearest"});t()})}}
 const EV={t:0,d:null};
 async function allEvents(){if(EV.d&&Date.now()-EV.t<45000)return EV.d;const q=await getDocs(collection(db,"events"));EV.t=Date.now();return EV.d=q.docs.map(d=>({id:d.id,...d.data()}))}
 const evSelect=evs=>`<label>Event<select id="evsel">${evs.map(e=>`<option value="${e.id}" ${e.id===S.evId?"selected":""}>${esc(e.name)}</option>`).join("")}</select></label>`;
@@ -233,12 +238,17 @@ async function mailCfg(f){if(mailCfg.c&&!f)return mailCfg.c;try{const s=await ge
   if(!mailCfg.c.url){try{const l=localStorage.getItem("finsite_mail_url");if(l&&MAILURL.test(l))mailCfg.c={...mailCfg.c,url:l}}catch(_){}}return mailCfg.c}
 async function gsend(items,o={}){const c=await mailCfg();if(!c.url)throw new Error("Add your Google Script URL in the Mail tab first.");const B=o.B||20;let sent=0,quota,fail=[];
   try{for(let i=0;i<items.length;i+=B){const tok=await auth.currentUser.getIdToken(),part=items.slice(i,i+B);
-      const r=await fetch(c.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:tok,mails:part})});
+      let r;try{r=await fetch(c.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:tok,mails:part})})}catch(_){throw new Error("Cannot reach the Google Script (Failed to fetch). In Apps Script: Deploy > Manage deployments > Edit > Version: New version, Who has access: Anyone. Then paste the /exec URL again in the Mail tab.")}
       let j;try{j=await r.json()}catch(_){throw new Error("The Google Script gave no valid answer. Check it is deployed with access set to Anyone.")}
       if(!j.ok)throw new Error(j.error||"Script error");sent+=j.sent;quota=j.quota;fail.push(...(j.failed||[]));o.on&&o.on(sent+fail.length,items.length)}}
   catch(x){x.sent=sent;throw x}
   return{sent,fail,quota}}
-const mailHtml=t=>`<div style="font-family:Arial,sans-serif;max-width:560px;line-height:1.55;color:#14231E">${esc(t).replace(/https?:\/\/[^\s<]+/g,u=>`<a href="${u}">${u}</a>`).replace(/\n/g,"<br>")}<hr style="border:0;border-top:1px solid #C9D9CE;margin:22px 0 10px"><div style="font-size:12px;color:#6B6485">FINSPIRE · M.Com Fintech, Dr. Manmohan Singh Bengaluru City University</div></div>`;
+const mailHtml=(t,btn,box)=>{
+  const body=esc(t).replace(/https?:\/\/[^\s<]+/g,u=>`<a href="${u}" style="color:#0E3B31;word-break:break-all">${u}</a>`).replace(/\n/g,"<br>");
+  const safe=u=>/^https?:\/\//i.test(u||"")&&!/^file:/i.test(u);
+  const boxH=box&&box.length?`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 4px;background:#F3F7F4;border:1px solid #C9D9CE;border-radius:10px"><tr><td style="padding:14px 18px;font-size:14px;line-height:1.7;color:#14231E">${box.map(([k,v])=>`<span style="color:#6B6485">${esc(k)}:</span> <b>${esc(v)}</b>`).join("<br>")}</td></tr></table>`:"";
+  const btnH=btn&&safe(btn.url)?`<table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px 0 6px"><tr><td align="center" bgcolor="#0E3B31" style="border-radius:8px"><a href="${esc(btn.url)}" target="_blank" style="display:inline-block;padding:14px 30px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px">${esc(btn.label||"Open FINSITE")} &rarr;</a></td></tr></table><div style="font-size:12px;color:#6B6485;line-height:1.5">Button not working? Copy this link:<br><a href="${esc(btn.url)}" style="color:#0E3B31;word-break:break-all">${esc(btn.url)}</a></div>`:"";
+  return `<div style="background:#EEF3EF;padding:24px 12px;font-family:Arial,Helvetica,sans-serif"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #C9D9CE"><tr><td style="background:#0E3B31;padding:22px 28px"><div style="font-family:Georgia,serif;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:.5px">FINSPIRE</div><div style="font-size:12px;color:#BFD6CB;margin-top:4px">M.Com Fintech Fest &middot; 25 Nov 2026</div></td></tr><tr><td style="padding:28px;font-size:15px;line-height:1.65;color:#14231E">${body}${boxH}${btnH}</td></tr><tr><td style="padding:16px 28px;background:#F7FAF8;border-top:1px solid #E1EAE4;font-size:12px;line-height:1.6;color:#6B6485">M.Com Fintech, Dept. of Studies &amp; Research in Commerce<br>Dr. Manmohan Singh Bengaluru City University<br>Contact: <a href="mailto:bcufintech@gmail.com" style="color:#0E3B31">bcufintech@gmail.com</a> &middot; 9916697170 / 84311 24901</td></tr></table></div>`};
 const RC={};async function regsOf(id,f){if(RC[id]&&!f)return RC[id];const q=await getDocs(query(collection(db,"registrations"),where("eventId","==",id)));return RC[id]=q.docs.map(d=>({_id:d.id,...d.data()}))}
 
 function drawRegs(f,isAdmin){const R=S.regs,n=R.filter(r=>r.checkedIn).length,rows=R.filter(r=>(r.name+r.email+r.regId+(r.phone||"")).toLowerCase().includes(f.toLowerCase()));
@@ -335,7 +345,7 @@ async function review(E,res){S.review=E.id;const regs=await regsOf(E.id),st=res&
     const pb=$("#pub"),M=t=>$("#msg").textContent=t;pb.disabled=true;
     try{if(!(await mailCfg()).url)throw new Error("Add your Google Script URL in the Mail tab first.");
       await updateDoc(doc(db,"results",E.id),{status:"published",reviewNote:"",publishedAt:serverTimestamp(),publishedBy:S.user.uid});
-      const o=await gsend(regs.map(r=>({to:r.email,subject:`Results published: ${E.name}`,html:mailHtml(`Hi ${r.name},\n\nResults for ${E.name} are out.\n\n${res.summary}${safeUrl(res.fileUrl)?"\n\nResults file: "+safeUrl(res.fileUrl):""}\n\nView on FINSITE: ${link(E.id)}`)})),{on:(a,t)=>M(`Sent ${a} of ${t}…`)});
+      const o=await gsend(regs.map(r=>({to:r.email,subject:`Results published: ${E.name}`,html:mailHtml(`Hi ${r.name},\n\nResults for ${E.name} are out.\n\n${res.summary||""}${safeUrl(res.fileUrl)?"\n\nResults file: "+safeUrl(res.fileUrl):""}`,{label:"View results on FINSITE",url:link(E.id)})})),{on:(a,t)=>M(`Sent ${a} of ${t}…`)});
       M(`Published. ${o.sent} emails sent${o.fail.length?`, ${o.fail.length} failed`:""}.`);if(!o.fail.length)sendTab()}
     catch(x){M("Stopped: "+x.message+(x.sent?` ${x.sent} emails were already sent.`:""));pb.disabled=false}}}
 async function evTab(){if(S.edit)return editor();const [evs,g]=await Promise.all([allEvents(),getDoc(doc(db,"settings","general")).catch(()=>null)]);
@@ -397,7 +407,7 @@ async function makeMember(n,em,p,r,ids,evs,send){makeMember.note="";
     else{const l=[...new Set([...(e.coordinatorUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{coordinatorUids:l,coordinatorUid:l[0]})}}
   EV.t=0;
   if(send){try{const names=evs.filter(e=>ids.includes(e.id)).map(e=>e.name).join(", ");
-    await gsend([{to:em,subject:"Your FINSITE login",html:mailHtml(`Hi ${n},\n\nYour FINSITE ${r==="desk"?"entry desk":r} account is ready.\n\nWebsite: ${SITE()}\nLogin page: ${LOGIN(r)}\nEmail: ${em}\nPassword: ${p}\n${names?"\nAssigned events: "+names+"\n":""}\nPlease keep these details private.`),replyTo:"bcufintech@gmail.com"}]);makeMember.note="Login details were emailed to "+em+"."}
+    await mailCfg();await gsend([{to:em,subject:"Your FINSITE login",html:mailHtml(`Hi ${n},\n\nYour FINSITE ${r==="desk"?"entry desk":r} account is ready. Use the details below to sign in. Please keep them private.`,{label:"Sign in to FINSITE",url:LOGIN(r)},[["Login email",em],["Password",p],...(names?[["Assigned events",names]]:[])]),replyTo:"bcufintech@gmail.com"}]);makeMember.note="Login details were emailed to "+em+"."}
     catch(x){makeMember.note="Account created, but the email was not sent: "+x.message}}
   return `FINSITE login\nURL: ${location.origin+location.pathname}#/${r==="admin"?"admin":r==="desk"?"desk":"coordinator"}\nEmail: ${em}\nPassword: ${p}`}
 async function coordTab(){EV.t=0;const [aq,evs]=await Promise.all([getDocs(collection(db,"admins")),allEvents()]);
@@ -436,6 +446,12 @@ const SENDER_NAME = "FINSPIRE - M.Com Fintech, BCU";
 const MAX_PER_CALL = 50;
 
 function doGet() { return out_({ ok: true, info: "FINSITE mailer is running" }); }
+
+// Run this ONCE from the editor (select "authorize" > Run) to grant mail + network permission.
+function authorize() {
+  Logger.log("Mail quota left: " + MailApp.getRemainingDailyQuota());
+  UrlFetchApp.fetch("https://www.google.com", { muteHttpExceptions: true });
+}
 
 function doPost(e) {
   try {
@@ -487,26 +503,38 @@ function roleOf_(uid, token) {
 
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 `;
+const RS={};
+const TPL={pass:["Registration ID + QR pass","ev","Your FINSPIRE pass: {event}","Hi {name},\n\nThank you for registering for {event} on {date}.\n\nYour registration ID is {id}. Your QR pass is attached. Show it (or your ID) at the entrance and carry your college ID card.\n\nRegards,\nFINSPIRE team",1],
+ login:["Login credentials (team)","team","Your FINSITE login","Hi {name},\n\nYour FINSITE account is ready. Use the button below to open the login page. If you do not have your password, ask the admin to share it or send you a reset email.\n\nRegards,\nFINSPIRE team"],
+ results:["Results announcement","ev","Results published: {event}","Hi {name},\n\nThe results for {event} are out.\n\n{results}\n\n{resultslink}\n\nThank you for taking part.\n\nRegards,\nFINSPIRE team"],
+ remind:["Event reminder","ev","Reminder: {event} on {date}","Hi {name},\n\nThis is a reminder for {event} on {date}. Please report at least 15 minutes early and carry your college ID card.\n\nRegards,\nFINSPIRE team"],
+ thanks:["Thank you (attended)","att","Thank you for attending {event}","Hi {name},\n\nThank you for attending {event}. We hope to see you again.\n\nRegards,\nFINSPIRE team"]};
+async function loadRes(R,E){await loadQR().catch(()=>{});const ids=new Set([E&&E.id,...R.map(r=>(r.E||{}).id)].filter(Boolean));await Promise.all([...ids].filter(i=>!(i in RS)).map(async i=>{try{const d=await getDoc(doc(db,"results",i));RS[i]=d.exists()?d.data():null}catch(_){RS[i]=null}}))}
+function qrPass(Ev,r){const d=document.createElement("div");new QRCode(d,{text:`FINSITE:${Ev.id}:${r.regId}`,width:320,height:320});const q=d.querySelector("canvas"),c=document.createElement("canvas");c.width=560;c.height=720;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,560,720);g.strokeStyle="#0E3B31";g.lineWidth=6;g.strokeRect(8,8,544,704);g.textAlign="center";g.fillStyle="#0E3B31";g.font="700 28px Georgia,serif";g.fillText("FINSPIRE · Official pass",280,70);g.font="600 24px Arial";g.fillText(String(Ev.name||"").slice(0,34),280,112);g.drawImage(q,120,140,320,320);g.fillStyle="#C2412D";g.font="700 64px Georgia,serif";g.fillText(r.regId,280,540);g.fillStyle="#14231E";g.font="600 26px Arial";g.fillText(String(r.name||"").slice(0,30),280,592);g.font="20px Arial";g.fillText([fmtD(Ev.date),Ev.venue].filter(Boolean).join(" · ").slice(0,48),280,634);g.fillText("Show this QR code at the entrance",280,676);return{filename:"Pass-"+r.regId+".png",type:"image/png",data:c.toDataURL("image/png").split(",")[1]}}
+const ldBind=()=>document.querySelectorAll("[data-ld]").forEach(b=>b.onclick=async()=>{if(!confirm("Email the login page and username to "+b.dataset.ld+"?"))return;b.disabled=true;try{await mailCfg();await gsend([{to:b.dataset.ld,subject:"Your FINSITE login",html:mailHtml(`Hi ${b.dataset.n||"there"},\n\nHere are your FINSITE login details. If you have forgotten your password, ask the admin to send you a password reset email.`,{label:"Open login page",url:LOGIN(b.dataset.r)},[["Login email",b.dataset.ld]]),replyTo:"bcufintech@gmail.com"}]);b.textContent="Sent"}catch(x){b.textContent="Failed";b.disabled=false;alert(x.message)}});
 async function mailTab(){const [evs,mc]=await Promise.all([allEvents(),mailCfg(true)]);
   const GR=[["ev","Registered participants of the event"],["att","Attended participants of the event"],["no","Registered but did not attend"],["all","All participants of all events"],["coord","Coordinators of the event"],["coordall","All coordinators"],["team","Whole team (coordinators, entry desk, admins)"],["custom","Custom list of emails"]],
     code=GAS_TPL.replace("__PID__",cfg.projectId).replace("__KEY__",cfg.apiKey);
   $("#pane").innerHTML=`<div class="card mist"><details ${mc.url?"":"open"}><summary><b>Google Script setup</b> <span class="pill">${mc.url?"Connected":"Not set up"}</span></summary>
   <ol class="muted"><li>Open <b>script.google.com</b>, choose New project, delete the sample code and paste the code below. Save.</li><li>Click <b>Deploy</b> &gt; New deployment &gt; type <b>Web app</b>. Execute as <b>Me</b>, who has access: <b>Anyone</b>. Deploy and allow the permissions (send mail, connect to external service).</li><li>Copy the Web app URL (ends with <code>/exec</code>) and paste it here.</li></ol>
   <div class="row"><input id="gu" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(mc.url||"")}"><span class="fit"><button class="btn" id="gs">Save URL</button></span></div><p id="gm" class="muted"></p>
+  <div class="row"><input id="su" placeholder="Public website link, e.g. https://finsite-bcu.web.app/" value="${esc(mc.site||"")}"><span class="fit"><button class="btn" id="ss">Save website link</button></span></div><p id="sm" class="muted">${location.protocol==="file:"&&!(mc.site||"")?"You opened this page from a file on your computer, so email buttons would not work for others. Paste your hosted website link above and save.":"This link is used for the button in every email."}</p>
   <p class="muted">Mail goes out from the Google account that owns the script. Daily limit: about 100 mails on a personal Gmail, about 1,500 on Google Workspace. Only a signed-in FINSITE admin can trigger sending, and the script verifies this with Firebase on every call. After editing the code, use Deploy &gt; Manage deployments &gt; Edit &gt; New version.</p>
   <div class="row"><b>Script code</b><span class="fit"><button class="btn sm" id="gc">Copy code</button></span></div><pre id="gas" style="max-height:300px;overflow:auto;background:#0f1b2d;color:#e6edf7;padding:14px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre">${esc(code)}</pre></details></div>
-  <div class="card" style="margin-top:16px"><h3>Compose mail</h3>
+  <div class="card" style="margin-top:16px"><h3>Compose mail</h3><label>Quick template <small>fills the group, subject and message</small><select id="mtpl"><option value="">Custom message</option>${Object.entries(TPL).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join("")}</select></label>
   <div class="row"><label>Send to<select id="mg">${GR.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select></label><label>Event <small>(for event groups and {event} / {date})</small><select id="me"><option value="">All events</option>${evs.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></label></div>
   <div id="mcw" style="display:none"><label>Emails <small>One per line. Optional name: <code>Asha, asha@example.com</code></small><textarea id="mc" rows="4"></textarea></label></div>
   <label>Reply-to email <small>(replies go here)</small><input id="mr" type="email" value="bcufintech@gmail.com"></label>
   <label>Subject <small>You can use {name}, {event}, {date}, {id}</small><input id="ms" maxlength="200"></label>
   <label>Message <small>Plain text. Links become clickable. Use {name}, {event}, {date}, {id}, {site}, {login}, {email}</small><textarea id="mb" rows="9"></textarea></label>
   <label class="opt"><input type="checkbox" id="mlg" checked>Add the website link at the end (coordinators and team also get their login page and login email)</label>
+  <label class="opt"><input type="checkbox" id="mqr">Attach each person's ID + QR pass (PNG)</label>
   <p class="row"><button class="btn alt" id="mp">Preview recipients</button><button class="btn alt" id="mt">Send test to me</button><button class="btn" id="msnd">Send mail</button></p><p id="mm" class="muted"></p><div id="mlist"></div></div>`;
   $("#mb").value="Hi {name},\n\n\n\nRegards,\nFINSPIRE team";
   $("#gc").onclick=async()=>{try{await navigator.clipboard.writeText(code);$("#gc").textContent="Copied"}catch(_){$("#gc").textContent="Select and copy manually"}setTimeout(()=>$("#gc").textContent="Copy code",2500)};
+  $("#ss").onclick=async()=>{const u=$("#su").value.trim(),m=$("#sm");if(!/^https:\/\/[^\s]+$/i.test(u))return m.textContent="Enter a full link starting with https://";try{await setDoc(doc(db,"private","mail"),{site:u,updatedBy:S.user.uid,updatedAt:serverTimestamp()},{merge:true});await mailCfg(true);m.textContent="Saved. Emails will now use this link."}catch(x){m.textContent="Could not save: "+x.message}};
   $("#gs").onclick=async()=>{const u=$("#gu").value.trim(),m=$("#gm");if(!MAILURL.test(u))return m.textContent="That does not look like a Web app URL. It should start with https://script.google.com/ and end with /exec.";
-    try{await setDoc(doc(db,"private","mail"),{url:u,updatedBy:S.user.uid,updatedAt:serverTimestamp()});await mailCfg(true);try{localStorage.removeItem("finsite_mail_url")}catch(_){}m.textContent="Saved. Use Send test to me to check it works."}catch(x){try{localStorage.setItem("finsite_mail_url",u)}catch(_){}mailCfg.c={...(mailCfg.c||{}),url:u};$(".pill").textContent="This device only";m.textContent="Saved on this device only, because Firestore blocked the shared save ("+x.message+"). To save it for every admin: open the Firebase rules tab, copy the Firestore rules, paste them in Firebase console > Firestore Database > Rules > Publish, then press Save URL again."}};
+    try{await setDoc(doc(db,"private","mail"),{url:u,updatedBy:S.user.uid,updatedAt:serverTimestamp()},{merge:true});await mailCfg(true);try{localStorage.removeItem("finsite_mail_url")}catch(_){}m.textContent="Saved. Use Send test to me to check it works."}catch(x){try{localStorage.setItem("finsite_mail_url",u)}catch(_){}mailCfg.c={...(mailCfg.c||{}),url:u};$(".pill").textContent="This device only";m.textContent="Saved on this device only, because Firestore blocked the shared save ("+x.message+"). To save it for every admin: open the Firebase rules tab, copy the Firestore rules, paste them in Firebase console > Firestore Database > Rules > Publish, then press Save URL again."}};
   const ok=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e),
   recips=async()=>{const g=$("#mg").value,ev=evs.find(e=>e.id===$("#me").value)||{},out=new Map(),add=(n,e,id,x)=>{e=String(e||"").trim().toLowerCase();if(ok(e)&&!out.has(e))out.set(e,{name:String(n||"").trim()||"there",email:e,regId:id||"",...(x||{})})},
       evsOf=(uid,f)=>evs.filter(e=>(e[f]||[]).includes(uid)),ctx=(list)=>list.length===1?list[0]:{name:list.map(e=>e.name).join(", ")};let E=ev;
@@ -517,21 +545,23 @@ async function mailTab(){const [evs,mc]=await Promise.all([allEvents(),mailCfg(t
     else if(g==="team"){E={};(await getDocs(collection(db,"admins"))).docs.forEach(d=>{const t=d.data(),r=roleOf(t);add(t.name,t.email,"",{login:LOGIN(r),E:ctx(r==="desk"?evsOf(d.id,"deskUids"):evsOf(d.id,"coordinatorUids"))})})}
     else{E={};$("#mc").value.split("\n").forEach(l=>{const m=l.match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g)||[];m.forEach(x=>add(m.length===1?l.replace(x,"").replace(/^[,;<>\s]+|[,;<>\s]+$/g,""):"",x))})}
     return{R:[...out.values()],E}},
-  tail=(r,Ev)=>{if(!$("#mlg").checked)return"";let t="\n\nWebsite: "+SITE();if(Ev&&Ev.id&&!r.login)t+="\nEvent page: "+link(Ev.id);if(r.login)t+="\nLogin page: "+r.login+"\nLogin email: "+r.email+"\nPassword: the one the admin shared with you when your account was created";return t},
-  build=(R,E,sub,body,rt)=>R.map(r=>{const Ev=r.E||E,x={login:r.login,email:r.email};return{to:r.email,subject:fill(sub,Ev,r.name,r.regId,x),html:mailHtml(fill(body,Ev,r.name,r.regId,x)+tail(r,Ev)),...(rt?{replyTo:rt}:{})}}),
+  tail=(r,Ev)=>{if(!$("#mlg").checked)return null;if(r.login)return{label:"Open login page",url:r.login};if(Ev&&Ev.id)return{label:"View event page",url:link(Ev.id)};return{label:"Open FINSITE",url:SITE()}},
+  boxOf=r=>r.login&&$("#mlg").checked?[["Login email",r.email]]:null,
+  build=(R,E,sub,body,rt)=>R.map(r=>{const Ev=r.E||E,x={login:r.login,email:r.email,res:RS[Ev.id]},at=$("#mqr").checked&&r.regId&&Ev.id?{attachments:[qrPass(Ev,r)]}:{};return{...at,to:r.email,subject:fill(sub,Ev,r.name,r.regId,x),html:mailHtml(fill(body,Ev,r.name,r.regId,x),tail(r,Ev),boxOf(r)),...(rt?{replyTo:rt}:{})}}),
   val=()=>{const sub=$("#ms").value.trim(),body=$("#mb").value.trim(),rt=$("#mr").value.trim();if(!sub)throw new Error("Enter a subject.");if(!body)throw new Error("Write a message.");if(rt&&!ok(rt))throw new Error("Reply-to is not a valid email.");return{sub,body,rt}},
   q=x=>x.sent?` ${x.sent} mails were already sent before this stopped.`:"";
   $("#mg").onchange=()=>{$("#mcw").style.display=$("#mg").value==="custom"?"":"none"};
+  $("#mtpl").onchange=e=>{const t=TPL[e.target.value];if(!t)return;$("#mg").value=t[1];$("#mg").onchange();$("#ms").value=t[2];$("#mb").value=t[3];$("#mqr").checked=!!t[4];$("#mlg").checked=e.target.value!=="login"};
   $("#mp").onclick=async()=>{const m=$("#mm");m.textContent="Counting…";try{const{R}=await recips();m.textContent=`${R.length} recipient${R.length===1?"":"s"} with a valid email.`;$("#mlist").innerHTML=R.length?`<p class="muted">${esc(R.slice(0,8).map(r=>r.name+" <"+r.email+">").join(", "))}${R.length>8?" and "+(R.length-8)+" more":""}</p>`:""}catch(x){m.textContent=x.message}};
-  $("#mt").onclick=async()=>{const m=$("#mm");try{const{sub,body,rt}=val(),E=evs.find(e=>e.id===$("#me").value)||evs[0]||{};m.textContent="Sending test…";const o=await gsend(build([{name:"Test",email:S.user.email,regId:"123456",login:LOGIN("admin")}],E,"[TEST] "+sub,body,rt));m.textContent=o.sent?`Test sent to ${S.user.email}.${o.quota!=null?" Daily mail limit left: "+o.quota+".":""}`:"The test failed. Check the script setup."}catch(x){m.textContent=x.message}};
-  $("#msnd").onclick=async()=>{const m=$("#mm"),b=$("#msnd");try{const v=val(),{R,E}=await recips();if(!R.length)return m.textContent="No recipients with a valid email.";if(!confirm(`Send "${v.sub}" to ${R.length} recipient${R.length===1?"":"s"}?`))return;b.disabled=true;
-      const o=await gsend(build(R,E,v.sub,v.body,v.rt),{on:(a,t)=>m.textContent=`Sent ${a} of ${t}…`});addDoc(collection(db,"auditLogs"),{action:"mail",reg:(v.sub.slice(0,60)+" · "+o.sent+" sent"),by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
+  $("#mt").onclick=async()=>{const m=$("#mm");try{const{sub,body,rt}=val(),E=evs.find(e=>e.id===$("#me").value)||evs[0]||{};m.textContent="Sending test…";await loadRes([],E);const o=await gsend(build([{name:"Test",email:S.user.email,regId:"123456",login:LOGIN("admin")}],E,"[TEST] "+sub,body,rt));m.textContent=o.sent?`Test sent to ${S.user.email}.${o.quota!=null?" Daily mail limit left: "+o.quota+".":""}`:"The test failed. Check the script setup."}catch(x){m.textContent=x.message}};
+  $("#msnd").onclick=async()=>{const m=$("#mm"),b=$("#msnd");try{const v=val(),{R,E}=await recips();if(!R.length)return m.textContent="No recipients with a valid email.";await loadRes(R,E);if(!confirm(`Send "${v.sub}" to ${R.length} recipient${R.length===1?"":"s"}?`))return;b.disabled=true;
+      const o=await gsend(build(R,E,v.sub,v.body,v.rt),{B:$("#mqr").checked?5:20,on:(a,t)=>m.textContent=`Sent ${a} of ${t}…`});addDoc(collection(db,"auditLogs"),{action:"mail",reg:(v.sub.slice(0,60)+" · "+o.sent+" sent"),by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
       m.textContent=`Done. ${o.sent} sent${o.fail.length?`, ${o.fail.length} failed: ${o.fail.slice(0,10).join(", ")}`:""}.${o.quota!=null?" Daily mail limit left: "+o.quota+".":""}`}catch(x){m.textContent="Stopped: "+x.message+q(x)}b.disabled=false}}
 
 /* ============ PASSWORD RESET ============ */
 async function pwdTab(){const T=(await getDocs(collection(db,"admins"))).docs.map(d=>({id:d.id,...d.data()})).filter(t=>t.email);
-  $("#pane").innerHTML=`<div class="card"><h3>Password reset</h3><p class="muted">Send a password reset link to a team member. This is only here for signed-in admins; it is not on the public login page. The link comes from Firebase and the person sets a new password themselves.</p></div><div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr>${T.map(t=>`<tr><td>${esc(t.name||"")}</td><td>${esc(t.email)}</td><td>${esc(t.role||"")}</td><td><button class="btn alt sm" data-rp="${esc(t.email)}">Send reset email</button></td></tr>`).join("")||`<tr><td colspan="4" class="muted">No team members yet.</td></tr>`}</table></div>`;
-  document.querySelectorAll("[data-rp]").forEach(b=>b.onclick=async()=>{if(!confirm("Send a password reset email to "+b.dataset.rp+"?"))return;b.disabled=true;try{await sendPasswordResetEmail(auth,b.dataset.rp);b.textContent="Sent"}catch(x){b.textContent="Failed";b.disabled=false}})}
+  $("#pane").innerHTML=`<div class="card"><h3>Password reset</h3><p class="muted">Send a password reset link to a team member. This is only here for signed-in admins; it is not on the public login page. The link comes from Firebase and the person sets a new password themselves.</p></div><div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr>${T.map(t=>`<tr><td>${esc(t.name||"")}</td><td>${esc(t.email)}</td><td>${esc(t.role||"")}</td><td><button class="btn alt sm" data-rp="${esc(t.email)}">Send reset email</button> <button class="btn alt sm" data-ld="${esc(t.email)}" data-n="${esc(t.name||"")}" data-r="${esc(t.role||"")}">Email login details</button></td></tr>`).join("")||`<tr><td colspan="4" class="muted">No team members yet.</td></tr>`}</table></div>`;
+  document.querySelectorAll("[data-rp]").forEach(b=>b.onclick=async()=>{if(!confirm("Send a password reset email to "+b.dataset.rp+"?"))return;b.disabled=true;try{await sendPasswordResetEmail(auth,b.dataset.rp);b.textContent="Sent"}catch(x){b.textContent="Failed";b.disabled=false}});ldBind()}
 
 /* ============ RESULTS + CERTIFICATES ============ */
 async function sendTab(){const evs=await allEvents();if(!evs.length)return $("#pane").innerHTML=`<p class="muted">Create an event first.</p>`;
@@ -540,8 +570,8 @@ async function sendTab(){const evs=await allEvents();if(!evs.length)return $("#p
   $("#evsel").onchange=e=>{S.evId=e.target.value;go()};go()}
 const imgOf=src=>new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=src});
 const FONTS=["Georgia","Bodoni Moda","Figtree","Times New Roman","Arial","Courier New"];
-const SITE=()=>location.origin+location.pathname,LOGIN=r=>SITE()+"#/"+(r==="admin"?"admin":r==="desk"?"desk":"coordinator");
-const fill=(s,E,n,id,x={})=>String(s).replace(/\{site\}/g,SITE()).replace(/\{login\}/g,x.login||SITE()).replace(/\{email\}/g,x.email||"").replace(/\{name\}/g,n).replace(/\{event\}/g,E.name||"").replace(/\{date\}/g,fmtD(E.date)).replace(/\{id\}/g,id||"");
+const SITE=()=>{const u=(mailCfg.c&&mailCfg.c.site||"").trim();return /^https?:\/\//i.test(u)?u.replace(/#.*$/,""):location.origin+location.pathname},LOGIN=r=>SITE()+"#/"+(r==="admin"?"admin":r==="desk"?"desk":"coordinator");
+const fill=(s,E,n,id,x={})=>String(s).replace(/\{site\}/g,SITE()).replace(/\{login\}/g,x.login||SITE()).replace(/\{email\}/g,x.email||"").replace(/\{name\}/g,n).replace(/\{event\}/g,E.name||"").replace(/\{date\}/g,fmtD(E.date)).replace(/\{id\}/g,id||"").replace(/\{results\}/g,x.res?String(x.res.summary||""):"").replace(/\{resultslink\}/g,x.res&&safeUrl(x.res.fileUrl)?safeUrl(x.res.fileUrl):"");
 const defItems=()=>{const b={font:"Georgia",bold:false,italic:false,align:"center",on:true,color:"#14231E",x:50};return[{...b,id:"a",text:"has successfully participated in",y:42,size:2,italic:true},{...b,id:"n",text:"{name}",y:52,size:4.5,bold:true,color:"#0E3B31"},{...b,id:"e",text:"{event}",y:62,size:2.4,bold:true},{...b,id:"d",text:"{date}",y:69,size:1.8},{...b,id:"i",text:"ID: {id}",y:92,size:1.4,font:"Arial",color:"#555555",on:false}]};
 const normCert=d=>{d=d||{};if(d.items)return{img:d.img||"",items:d.items};const it=defItems();if(d.x!==undefined){Object.assign(it[1],{x:d.x,y:d.y,size:d.size,color:d.color});it[0].on=false;it[2].on=!!d.ev;it[2].text="{event} · {date}";it[2].x=d.x;it[2].y=Math.min(95,d.y+8);it[3].on=false}return{img:d.img||"",items:it}};
 function drawCert(cv,img,c,E,n,id){const w=img.width,h=img.height,g=cv.getContext("2d");cv.width=w;cv.height=h;g.drawImage(img,0,0);g.textBaseline="middle";
@@ -557,10 +587,10 @@ async function certTab(){const evs=await allEvents();let d=null;
   <div id="chips" class="row" style="margin-top:10px"></div><div id="cp" class="q"></div>
   <canvas id="cv" style="max-width:100%;border:1px solid var(--line);border-radius:8px;touch-action:none;cursor:grab;background:#fff"></canvas>
   <p class="row"><button class="btn" id="cs1">Save design</button><button class="btn alt" id="cdl">Download sample</button><button class="btn alt" id="cex">Export design</button></p><p id="cmsg" class="muted"></p></div>
-  <div class="card" style="margin-top:18px"><h3>Email certificates</h3><p class="muted" id="cinfo">Choose an event above.</p><p><button class="btn" id="csend">Email certificates</button></p><p id="cmsg2" class="muted"></p></div>`;
+  <div class="card" style="margin-top:18px"><h3>Email certificates</h3><p class="muted" id="cinfo">Choose an event above.</p><div class="row"><label>Send to<select id="caud"><option value="att">Attended participants only</option><option value="all">All registered participants</option></select></label></div><p class="row"><button class="btn alt" id="ctest">Send test to me</button><button class="btn" id="csend">Email certificates</button></p><p id="cmsg2" class="muted"></p></div>`;
   const cv=$("#cv"),paint=()=>{if(!img){const g=cv.getContext("2d");cv.width=900;cv.height=520;g.fillStyle="#E4EEE8";g.fillRect(0,0,900,520);g.fillStyle="#4B5F57";g.font="26px Figtree,sans-serif";g.textAlign="center";g.fillText("Upload your certificate format to start",450,260);return}
     drawCert(cv,img,c,E(),"Participant Name","123456");const it=c.items[sel];if(it){const g=cv.getContext("2d");g.strokeStyle="#C2412D";g.lineWidth=cv.width/300;g.beginPath();g.arc(it.x*cv.width/100,it.y*cv.height/100,cv.width/110,0,7);g.stroke()}};
-  const loadAtt=async()=>{if(!S.evId){$("#cinfo").textContent="Create an event first.";return}$("#cinfo").textContent="Counting attendees…";try{att=(await regsOf(S.evId,true)).filter(r=>r.checkedIn);$("#cinfo").textContent=`${att.length} attended ${E().name}${E().certSentAt?" · certificates already sent once":""}. Each gets the design above with their name and this event's name.`;$("#csend").textContent=`Email certificates (${att.length})`}catch(x){$("#cinfo").textContent="Could not load attendees: "+x.message}};
+  const loadAtt=async()=>{if(!S.evId){$("#cinfo").textContent="Create an event first.";return}$("#cinfo").textContent="Counting attendees…";try{att=(await regsOf(S.evId,true)).filter(r=>$("#caud").value==="all"||r.checkedIn);$("#cinfo").textContent=`${att.length} ${$("#caud").value==="all"?"registered for":"attended"} ${E().name}${E().certSentAt?" · certificates already sent once":""}. Each gets the design above with their name and this event's name.`;$("#csend").textContent=`Email certificates (${att.length})`}catch(x){$("#cinfo").textContent="Could not load attendees: "+x.message}};
   const chips=()=>{$("#chips").innerHTML=c.items.map((it,i)=>`<button class="btn sm ${i===sel?"":"alt"}" data-i="${i}" style="${it.on?"":"opacity:.5"}">${esc(it.text.slice(0,18))||"Text"}</button>`).join("")+`<button class="btn alt sm" id="addt">+ Add text</button>`;
     document.querySelectorAll("#chips [data-i]").forEach(b=>b.onclick=()=>{sel=+b.dataset.i;chips();panel();paint()});
     $("#addt").onclick=()=>{c.items.push({id:"t"+Date.now(),text:"New text",x:50,y:50,size:2,color:"#14231E",font:"Georgia",bold:false,italic:false,align:"center",on:true});sel=c.items.length-1;chips();panel();paint()}};
@@ -573,7 +603,7 @@ async function certTab(){const evs=await allEvents();let d=null;
   cv.onpointerdown=e=>{if(!img)return;const[x,y]=at(e);let best=-1,bd=1e9;c.items.forEach((it,i)=>{const dd=Math.abs(it.y-y)*3+Math.abs(it.x-x)*.5;if(it.on&&dd<bd){bd=dd;best=i}});if(best<0)return;sel=best;drag=true;cv.setPointerCapture(e.pointerId);cv.style.cursor="grabbing";chips();panel();paint()};
   cv.onpointermove=e=>{if(!drag)return;const[x,y]=at(e),it=c.items[sel];it.x=Math.round(Math.min(100,Math.max(0,x))*2)/2;it.y=Math.round(Math.min(100,Math.max(0,y))*2)/2;paint()};
   cv.onpointerup=()=>{if(!drag)return;drag=false;cv.style.cursor="grab";panel()};
-  const cev=$("#cev");if(cev)cev.onchange=e=>{S.evId=e.target.value;paint();loadAtt()};
+  $("#caud").onchange=()=>loadAtt();const cev=$("#cev");if(cev)cev.onchange=e=>{S.evId=e.target.value;paint();loadAtt()};
   $("#cf").onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=async()=>{try{const u=pack(await imgOf(fr.result));if(!u)return M("That image is too large to store. Try a smaller file.");c.img=u;img=await imgOf(u);paint();M("Format loaded. Arrange the text, then save.")}catch(_){M("Could not read that image.")}};fr.readAsDataURL(f)};
   $("#cs1").onclick=async()=>{if(!c.img)return M("Upload a certificate format first.");try{await setDoc(doc(db,"certs","all"),c);M("Design saved. It now applies to every event.")}catch(x){M("Could not save: "+x.message)}};
   $("#cdl").onclick=()=>{if(!img)return M("Upload a certificate format first.");const k=document.createElement("canvas");drawCert(k,img,c,E(),"Participant Name","123456");k.toBlob(b=>dl(b,"certificate-sample.jpg"),"image/jpeg",.92)};
@@ -587,6 +617,7 @@ async function certTab(){const evs=await allEvents();let d=null;
       for(let i=0;i<att.length;i+=5){const part=att.slice(i,i+5).map(r=>{drawCert(k,img,c,Ev,r.name,r.regId);return{to:r.email,subject:`Your certificate: ${Ev.name}`,html:mailHtml(`Hi ${r.name},\n\nThank you for participating in ${Ev.name}. Your certificate is attached.`),attachments:[{filename:"Certificate.jpg",type:"image/jpeg",data:k.toDataURL("image/jpeg",.7).split(",")[1]}]}});
         const o=await gsend(part,{B:5});ok+=o.sent;bad.push(...o.fail);M2(`Sent ${ok} of ${att.length}…`)}
       if(ok){await updateDoc(doc(db,"events",Ev.id),{certSentAt:serverTimestamp()});Ev.certSentAt=true}EV.t=0;M2(`Certificates sent to ${ok} of ${att.length} attendees.${bad.length?" Failed: "+bad.join(", "):""}`)}catch(x){M2(`Stopped after ${ok} sent: `+x.message)}b.disabled=false};
+  $("#ctest").onclick=async()=>{if(!img)return M2("Upload and save a certificate format first.");try{if(!(await mailCfg()).url)throw new Error("Add your Google Script URL in the Mail tab first.");const k=document.createElement("canvas"),Ev=E();drawCert(k,img,c,Ev,"Test Participant","123456");const o=await gsend([{to:S.user.email,subject:"[TEST] Your certificate: "+Ev.name,html:mailHtml("This is a test certificate."),attachments:[{filename:"Certificate.jpg",type:"image/jpeg",data:k.toDataURL("image/jpeg",.7).split(",")[1]}]}]);M2(o.sent?"Test sent to "+S.user.email+".":"The test failed.")}catch(x){M2(x.message)}};
   chips();panel();paint();loadAtt()}
 
 /* ============ IMPORT / EXPORT ============ */
