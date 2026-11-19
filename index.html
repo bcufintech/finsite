@@ -227,7 +227,8 @@ async function allEvents(){if(EV.d&&Date.now()-EV.t<45000)return EV.d;const q=aw
 const evSelect=evs=>`<label>Event<select id="evsel">${evs.map(e=>`<option value="${e.id}" ${e.id===S.evId?"selected":""}>${esc(e.name)}</option>`).join("")}</select></label>`;
 /* ---- Google Apps Script mail sender (replaces the Firestore "mail" queue) ---- */
 const MAILURL=/^https:\/\/script\.google\.com\/(a\/macros\/[\w.-]+|macros)\/s\/[\w-]+\/exec$/;
-async function mailCfg(f){if(mailCfg.c&&!f)return mailCfg.c;try{const s=await getDoc(doc(db,"private","mail"));mailCfg.c=s.exists()?s.data():{}}catch(_){mailCfg.c={}}return mailCfg.c}
+async function mailCfg(f){if(mailCfg.c&&!f)return mailCfg.c;try{const s=await getDoc(doc(db,"private","mail"));mailCfg.c=s.exists()?s.data():{}}catch(_){mailCfg.c={}}
+  if(!mailCfg.c.url){try{const l=localStorage.getItem("finsite_mail_url");if(l&&MAILURL.test(l))mailCfg.c={...mailCfg.c,url:l}}catch(_){}}return mailCfg.c}
 async function gsend(items,o={}){const c=await mailCfg();if(!c.url)throw new Error("Add your Google Script URL in the Mail tab first.");const B=o.B||20;let sent=0,quota,fail=[];
   try{for(let i=0;i<items.length;i+=B){const tok=await auth.currentUser.getIdToken(),part=items.slice(i,i+B);
       const r=await fetch(c.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:tok,mails:part})});
@@ -272,9 +273,10 @@ function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stre
 
 /* ============ EVENT COORDINATOR ============ */
 async function coord(){if(!S.user)return login("Coordinator sign in");if(S.role!=="coordinator")return denied("event coordinator");
-  const q=await getDocs(query(collection(db,"events"),where("coordinatorUids","array-contains",S.user.uid))),evs=q.docs.map(d=>({id:d.id,...d.data()}));
-  const bind=shell("Event coordinator",[["event","Event details"],["regs","Registrants"],["results","Results"]]);
-  if(!evs.length){$("#pane").innerHTML=`<p class="muted">No event is assigned to you yet. Ask the admin to assign you in Events.</p>`;return}
+  const bind=shell("Event coordinator",[["event","Event details"],["regs","Registrants"],["results","Results"]]);let evs;
+  try{const q=await getDocs(query(collection(db,"events"),where("coordinatorUids","array-contains",S.user.uid)));evs=q.docs.map(d=>({id:d.id,...d.data()}))}
+  catch(x){$("#pane").innerHTML=`<p class="muted">Could not load your events: ${esc(x.message)}. Ask the admin to republish the Firestore rules (Admin, Firebase rules tab).</p>`;return}
+  if(!evs.length){$("#pane").innerHTML=`<p class="muted">No event is assigned to you yet. Ask the admin to assign you in the Coordinators tab.</p>`;return}
   if(!S.evId||!evs.some(e=>e.id===S.evId))S.evId=evs[0].id;const E=evs.find(e=>e.id===S.evId);
   const draw=async()=>{({event:()=>{$("#pane").innerHTML=(evs.length>1?evSelect(evs):"")+`<div class="card"><h3>${esc(E.name)}</h3><p class="muted">Status: ${esc(E.status)}. You can edit details and rules; status and coordinator assignment are admin-only.</p><div class="row">${CF.map(([k,l,t])=>`<label>${l}<input data-k="${k}" type="${t||"text"}" value="${esc(E[k]||"")}"></label>`).join("")}</div><label>Description<textarea data-k="description" rows="4">${esc(E.description||"")}</textarea></label>${RF(E)}<p><button class="btn" id="sv">Save changes</button></p><p id="msg" class="muted"></p></div>`;
         const s=$("#evsel");if(s)s.onchange=e=>{S.evId=e.target.value;coord()};
@@ -371,22 +373,45 @@ async function teamTab(){const [aq,evs]=await Promise.all([getDocs(collection(db
   $("#ta").onclick=async()=>{const n=$("#tn").value.trim(),em=$("#te").value.trim().toLowerCase(),p=$("#tp").value,r=$("#tr").value,ids=[...document.querySelectorAll("[data-ev]:checked")].map(i=>i.dataset.ev);
     if(!n||!em||p.length<8)return $("#cred").innerHTML=`<p class="muted">Enter a name, an email and a password of at least 8 characters.</p>`;
     $("#ta").disabled=true;
-    try{const u=await createUserWithEmailAndPassword(A2(),em,p);await signOut(A2());await setDoc(doc(db,"admins",u.user.uid),{name:n,email:em,role:r});S.coords=null;
-      for(const id of ids){const e=evs.find(x=>x.id===id);if(r==="desk"){const l=[...new Set([...(e.deskUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{deskUids:l})}else{const l=[...new Set([...(e.coordinatorUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{coordinatorUids:l,coordinatorUid:l[0]})}EV.t=0}
-      const txt=`FINSITE login\nURL: ${location.origin+location.pathname}#/${r==="admin"?"admin":r==="desk"?"desk":"coordinator"}\nEmail: ${em}\nPassword: ${p}`;
-      await teamTab();$("#cred").innerHTML=`<div class="res ok"><pre style="margin:0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
+    try{const txt=await makeMember(n,em,p,r,ids,evs);
+            await teamTab();$("#cred").innerHTML=`<div class="res ok"><pre style="margin:0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
     catch(x){$("#cred").innerHTML=`<p class="muted">Could not create: ${esc(x.message)}</p>`;$("#ta").disabled=false}}}
 
 /* ============ COORDINATORS (and entry desk team) ============ */
-async function coordTab(){const [aq,evs]=await Promise.all([getDocs(collection(db,"admins")),allEvents()]);
-  const T=aq.docs.map(d=>({id:d.id,...d.data()})).filter(t=>t.role==="coordinator"||t.role==="desk"),RL={coordinator:"Coordinator",desk:"Entry desk"},
-    evOf=t=>evs.filter(e=>(e.coordinatorUids||[]).includes(t.id)||(e.deskUids||[]).includes(t.id)).map(e=>e);let cur=[];
-  $("#pane").innerHTML=`<div class="row"><input id="cq" placeholder="Search name, email or event"><select id="cr"><option value="">Coordinators and entry desk</option><option value="coordinator">Coordinators only</option><option value="desk">Entry desk only</option></select><select id="cfe"><option value="">All events</option>${evs.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select><span class="fit"><button class="btn alt" id="cx">Download Excel</button></span></div><div id="clist" style="margin-top:10px"></div>`;
+const roleOf=t=>String(t.role||"").trim().toLowerCase();
+async function makeMember(n,em,p,r,ids,evs){
+  const u=await createUserWithEmailAndPassword(A2(),em,p);await signOut(A2());
+  await setDoc(doc(db,"admins",u.user.uid),{name:n,email:em,role:r});S.coords=null;
+  if(r!=="admin")for(const id of ids){const e=evs.find(x=>x.id===id);if(!e)continue;
+    if(r==="desk"){const l=[...new Set([...(e.deskUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{deskUids:l})}
+    else{const l=[...new Set([...(e.coordinatorUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{coordinatorUids:l,coordinatorUid:l[0]})}}
+  EV.t=0;
+  return `FINSITE login\nURL: ${location.origin+location.pathname}#/${r==="admin"?"admin":r==="desk"?"desk":"coordinator"}\nEmail: ${em}\nPassword: ${p}`}
+async function coordTab(){EV.t=0;const [aq,evs]=await Promise.all([getDocs(collection(db,"admins")),allEvents()]);
+  const T=aq.docs.map(d=>({id:d.id,...d.data()})).filter(t=>roleOf(t)==="coordinator"||roleOf(t)==="desk"),RL={coordinator:"Coordinator",desk:"Entry desk"},
+    evOf=t=>evs.filter(e=>(e.coordinatorUids||[]).includes(t.id)||(e.deskUids||[]).includes(t.id));let cur=[],open=null;
+  $("#pane").innerHTML=`<div class="card"><h3>Add coordinator</h3><p class="muted">Creates the login and assigns events in one step. The coordinator signs in at <code>#/coordinator</code> and sees the assigned events there. Share the credentials yourself; passwords are not stored.</p>
+  <div class="row"><input id="an" placeholder="Name"><input id="ae" type="email" placeholder="Email (login)"><input id="ap" placeholder="Password (min 8)" value="${pw()}"><select id="ar"><option value="coordinator">Event coordinator</option><option value="desk">Entry desk</option></select></div>
+  <label>Assign events</label>${evs.map(e=>`<label class="opt"><input type="checkbox" data-aev="${e.id}">${esc(e.name)}</label>`).join("")||`<p class="muted">No events yet. Create events in the Manage tab first.</p>`}
+  <p><button class="btn" id="aadd">Add and assign</button></p><div id="acred"></div></div>
+  <div class="row" style="margin-top:18px"><input id="cq" placeholder="Search name, email or event"><select id="cr"><option value="">Coordinators and entry desk</option><option value="coordinator">Coordinators only</option><option value="desk">Entry desk only</option></select><select id="cfe"><option value="">All events</option>${evs.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select><span class="fit"><button class="btn alt" id="cx">Download Excel</button></span></div><div id="clist" style="margin-top:10px"></div>`;
+  $("#aadd").onclick=async()=>{const n=$("#an").value.trim(),em=$("#ae").value.trim().toLowerCase(),p=$("#ap").value,r=$("#ar").value,ids=[...document.querySelectorAll("[data-aev]:checked")].map(i=>i.dataset.aev);
+    if(!n||!em||p.length<8)return $("#acred").innerHTML=`<p class="muted">Enter a name, an email and a password of at least 8 characters.</p>`;
+    $("#aadd").disabled=true;
+    try{const txt=await makeMember(n,em,p,r,ids,evs);await coordTab();$("#acred").innerHTML=`<div class="res ok"><b>Added and assigned.</b><pre style="margin:6px 0 0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
+    catch(x){$("#acred").innerHTML=`<p class="muted">Could not add: ${esc(x.code==="auth/email-already-in-use"?"this email already has a login. Use another email, or use Password reset.":x.message)}</p>`;$("#aadd").disabled=false}};
   const draw=()=>{const k=$("#cq").value.toLowerCase(),r=$("#cr").value,f=$("#cfe").value;
-    cur=T.filter(t=>(!r||t.role===r)&&(!f||evOf(t).some(e=>e.id===f))&&[t.name,t.email,evOf(t).map(e=>e.name).join(" ")].join(" ").toLowerCase().includes(k)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-    $("#clist").innerHTML=`<p class="muted"><b>${cur.length}</b> of ${T.length} people. Create logins and assign events in the Team tab.</p><div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Events</th></tr>${cur.map(t=>`<tr><td>${esc(t.name||"")}</td><td>${esc(t.email||"")}</td><td>${esc(RL[t.role])}</td><td>${esc(evOf(t).map(e=>e.name).join(", "))}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">No one found.</td></tr>`}</table></div>`};
+    cur=T.filter(t=>(!r||roleOf(t)===r)&&(!f||evOf(t).some(e=>e.id===f))&&[t.name,t.email,evOf(t).map(e=>e.name).join(" ")].join(" ").toLowerCase().includes(k)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+    $("#clist").innerHTML=`<p class="muted"><b>${cur.length}</b> of ${T.length} people.</p><div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Events</th><th></th></tr>${cur.map(t=>{const fld=roleOf(t)==="desk"?"deskUids":"coordinatorUids";
+      return `<tr><td>${esc(t.name||"")}</td><td>${esc(t.email||"")}</td><td>${esc(RL[roleOf(t)])}</td><td>${esc(evOf(t).map(e=>e.name).join(", "))||`<span class="muted">None assigned</span>`}</td><td><button class="btn alt sm" data-as="${t.id}">${open===t.id?"Close":"Assign events"}</button></td></tr>`+
+      (open===t.id?`<tr><td colspan="5"><div class="card mist"><b>Events for ${esc(t.name||t.email)}</b>${evs.map(e=>`<label class="opt"><input type="checkbox" data-pe="${e.id}" ${(e[fld]||[]).includes(t.id)?"checked":""}>${esc(e.name)}</label>`).join("")||`<p class="muted">No events yet.</p>`}<p class="row"><button class="btn sm" id="psv">Save assignment</button><button class="btn alt sm" id="pcx">Cancel</button></p><p id="pmsg" class="muted"></p></div></td></tr>`:"")}).join("")||`<tr><td colspan="5" class="muted">No one found.</td></tr>`}</table></div>`;
+    document.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{open=open===b.dataset.as?null:b.dataset.as;draw()});
+    const sv=$("#psv");if(sv){$("#pcx").onclick=()=>{open=null;draw()};
+      sv.onclick=async()=>{const t=T.find(x=>x.id===open),fld=roleOf(t)==="desk"?"deskUids":"coordinatorUids",want=new Set([...document.querySelectorAll("[data-pe]:checked")].map(i=>i.dataset.pe));sv.disabled=true;
+        try{for(const e of evs){const has=(e[fld]||[]).includes(t.id),w=want.has(e.id);if(has===w)continue;const l=w?[...new Set([...(e[fld]||[]),t.id])]:(e[fld]||[]).filter(x=>x!==t.id),d={[fld]:l};if(fld==="coordinatorUids")d.coordinatorUid=l[0]||"";await updateDoc(doc(db,"events",e.id),d)}
+          EV.t=0;await coordTab()}catch(x){$("#pmsg").textContent="Could not save: "+x.message;sv.disabled=false}}}};
   ["cq","cr","cfe"].forEach(i=>$("#"+i).oninput=draw);
-  $("#cx").onclick=()=>xl(cur.map(t=>({Name:t.name||"",Email:t.email||"",Role:RL[t.role],Events:evOf(t).map(e=>e.name).join(", ")})),"coordinators");
+  $("#cx").onclick=()=>xl(cur.map(t=>({Name:t.name||"",Email:t.email||"",Role:RL[roleOf(t)],Events:evOf(t).map(e=>e.name).join(", ")})),"coordinators");
   draw()}
 
 /* ============ MAIL (sent through your Google Apps Script) ============ */
@@ -467,7 +492,7 @@ async function mailTab(){const [evs,mc]=await Promise.all([allEvents(),mailCfg(t
   $("#mb").value="Hi {name},\n\n\n\nRegards,\nFINSPIRE team";
   $("#gc").onclick=async()=>{try{await navigator.clipboard.writeText(code);$("#gc").textContent="Copied"}catch(_){$("#gc").textContent="Select and copy manually"}setTimeout(()=>$("#gc").textContent="Copy code",2500)};
   $("#gs").onclick=async()=>{const u=$("#gu").value.trim(),m=$("#gm");if(!MAILURL.test(u))return m.textContent="That does not look like a Web app URL. It should start with https://script.google.com/ and end with /exec.";
-    try{await setDoc(doc(db,"private","mail"),{url:u,updatedBy:S.user.uid,updatedAt:serverTimestamp()});await mailCfg(true);m.textContent="Saved. Use Send test to me to check it works."}catch(x){m.textContent="Could not save: "+x.message}};
+    try{await setDoc(doc(db,"private","mail"),{url:u,updatedBy:S.user.uid,updatedAt:serverTimestamp()});await mailCfg(true);try{localStorage.removeItem("finsite_mail_url")}catch(_){}m.textContent="Saved. Use Send test to me to check it works."}catch(x){try{localStorage.setItem("finsite_mail_url",u)}catch(_){}mailCfg.c={...(mailCfg.c||{}),url:u};$(".pill").textContent="This device only";m.textContent="Saved on this device only, because Firestore blocked the shared save ("+x.message+"). To save it for every admin: open the Firebase rules tab, copy the Firestore rules, paste them in Firebase console > Firestore Database > Rules > Publish, then press Save URL again."}};
   const ok=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e),
   recips=async()=>{const g=$("#mg").value,ev=evs.find(e=>e.id===$("#me").value)||{},out=new Map(),add=(n,e,id)=>{e=String(e||"").trim().toLowerCase();if(ok(e)&&!out.has(e))out.set(e,{name:String(n||"").trim()||"there",email:e,regId:id||""})};let E=ev;
     if(g==="ev"||g==="att"||g==="no"){if(!ev.id)throw new Error("Choose an event.");(await regsOf(ev.id,true)).filter(r=>g==="ev"||(g==="att")===!!r.checkedIn).forEach(r=>add(r.name,r.email,r.regId))}
