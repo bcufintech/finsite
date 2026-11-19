@@ -278,9 +278,11 @@ async function coord(){if(!S.user)return login("Coordinator sign in");if(S.role!
   catch(x){$("#pane").innerHTML=`<p class="muted">Could not load your events: ${esc(x.message)}. Ask the admin to republish the Firestore rules (Admin, Firebase rules tab).</p>`;return}
   if(!evs.length){$("#pane").innerHTML=`<p class="muted">No event is assigned to you yet. Ask the admin to assign you in the Coordinators tab.</p>`;return}
   if(!S.evId||!evs.some(e=>e.id===S.evId))S.evId=evs[0].id;const E=evs.find(e=>e.id===S.evId);
-  const draw=async()=>{({event:()=>{$("#pane").innerHTML=(evs.length>1?evSelect(evs):"")+`<div class="card"><h3>${esc(E.name)}</h3><p class="muted">Status: ${esc(E.status)}. You can edit details and rules; status and coordinator assignment are admin-only.</p><div class="row">${CF.map(([k,l,t])=>`<label>${l}<input data-k="${k}" type="${t||"text"}" value="${esc(E[k]||"")}"></label>`).join("")}</div><label>Description<textarea data-k="description" rows="4">${esc(E.description||"")}</textarea></label>${RF(E)}<p><button class="btn" id="sv">Save changes</button></p><p id="msg" class="muted"></p></div>`;
+  const draw=async()=>{({event:()=>{$("#pane").innerHTML=(evs.length>1?evSelect(evs):"")+`<div class="card"><h3>${esc(E.name)}</h3><p class="muted">Status: ${esc(E.status)}. You can edit details, rules and the registration form; status and coordinator assignment are admin-only.</p><div class="row">${CF.map(([k,l,t])=>`<label>${l}<input data-k="${k}" type="${t||"text"}" value="${esc(E[k]||"")}"></label>`).join("")}</div><label>Description<textarea data-k="description" rows="4">${esc(E.description||"")}</textarea></label>${RF(E)}${qHtml(E)}<p><button class="btn" id="sv">Save changes</button></p><p id="msg" class="muted"></p></div>`;
         const s=$("#evsel");if(s)s.onchange=e=>{S.evId=e.target.value;coord()};
-        $("#sv").onclick=async()=>{const d={};document.querySelectorAll("[data-k]").forEach(i=>d[i.dataset.k]=i.value);d.editedBy=S.user.uid;d.editedAt=serverTimestamp();
+        const cpull=()=>{document.querySelectorAll("[data-k]").forEach(i=>E[i.dataset.k]=i.value);qPull(E)};
+        qBind(E,cpull,()=>{S.tab="event";draw()});
+        $("#sv").onclick=async()=>{cpull();const d={};document.querySelectorAll("[data-k]").forEach(i=>d[i.dataset.k]=i.value);d.questions=E.questions||[];d.editedBy=S.user.uid;d.editedAt=serverTimestamp();
           try{await updateDoc(doc(db,"events",E.id),d);Object.assign(E,d);$("#msg").textContent="Saved. Changes are live on the public event page."}catch(x){$("#msg").textContent="Could not save: "+x.message}}},
       regs:async()=>{$("#pane").innerHTML=`<p class="muted">Attendance is verified by the entry desk team. People show as Checked in here once the desk verifies them. Press Refresh for the latest.</p><div id="rl">Loading…</div>`;S.regs=await regsOf(S.evId,true);drawRegs("",false)},
       results:()=>resultsPane(E)})[S.tab]()};
@@ -341,21 +343,27 @@ async function evTab(){if(S.edit)return editor();const [evs,g]=await Promise.all
   $("#new").onclick=async()=>{await cp;S.edit={id:"",questions:[{id:"q1",label:"College / Organisation",type:"text",required:true,options:[]}],status:"draft"};evTab()};
   document.querySelectorAll("[data-e]").forEach(b=>b.onclick=async()=>{await cp;S.edit={id:b.dataset.e,...evs.find(e=>e.id===b.dataset.e)};evTab()})}
 
+/* ---- shared Google-Form style question builder (admin editor + coordinator) ---- */
+const qHtml=e=>`<h3 style="margin-top:22px">Registration form</h3><p class="muted">Name, email and mobile are always collected. Add your own questions below.</p><div id="qs">${(e.questions||[]).map((q,i)=>`<div class="q" data-i="${i}"><div class="row"><input data-f="label" value="${esc(q.label)}" placeholder="Question"><select data-f="type">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${q.type===k?"selected":""}>${v}</option>`).join("")}</select>
+  <label class="opt fit"><input type="checkbox" data-f="required" ${q.required?"checked":""}>Required</label></div>${["choice","checkbox","dropdown"].includes(q.type)?`<input data-f="options" value="${esc((q.options||[]).join(", "))}" placeholder="Options, separated by commas" style="margin-top:6px">`:""}
+  <div class="row" style="margin-top:6px"><span class="fit"><button type="button" class="btn alt sm" data-a="up">Move up</button> <button type="button" class="btn alt sm" data-a="down">Move down</button> <button type="button" class="btn alt sm" data-a="dup">Duplicate</button> <button type="button" class="btn alt sm" data-a="del">Delete</button></span></div></div>`).join("")}</div>
+  <p><button type="button" class="btn alt" id="addq">Add question</button></p>`;
+const qPull=e=>{e.questions=e.questions||[];document.querySelectorAll("#qs .q").forEach(d=>{const q=e.questions[d.dataset.i];if(!q)return;d.querySelectorAll("[data-f]").forEach(i=>{const f=i.dataset.f;q[f]=f==="required"?i.checked:f==="options"?i.value.split(",").map(x=>x.trim()).filter(Boolean):i.value})})};
+const qBind=(e,pull,redraw)=>{e.questions=e.questions||[];
+  document.querySelectorAll("#qs select[data-f=type]").forEach(s=>s.onchange=()=>{pull();redraw()});
+  document.querySelectorAll("#qs [data-a]").forEach(b=>b.onclick=()=>{pull();const i=+b.closest(".q").dataset.i,a=b.dataset.a,qs=e.questions;
+    if(a==="del")qs.splice(i,1);if(a==="dup")qs.splice(i+1,0,{...qs[i],id:"q"+Date.now()});if(a==="up"&&i>0)[qs[i-1],qs[i]]=[qs[i],qs[i-1]];if(a==="down"&&i<qs.length-1)[qs[i+1],qs[i]]=[qs[i],qs[i+1]];redraw()});
+  $("#addq").onclick=()=>{pull();e.questions.push({id:"q"+Date.now(),label:"",type:"text",required:false,options:[]});redraw()}};
+
 function editor(){const e=S.edit,F=(k,l,t="text")=>`<label>${l}<input data-k="${k}" type="${t}" value="${esc(e[k]||"")}"></label>`;
   $("#pane").innerHTML=`<div class="card"><h3>${e.id?"Edit event":"New event"}</h3>${F("name","Event name")}<div class="row">${F("date","Date","date")}${F("start","Start time","time")}${F("end","End time","time")}</div>${F("venue","Venue")}${F("organiser","Organiser")}<div class="row">${F("contactEmail","Contact email","email")}${F("contactPhone","Contact number")}</div><div class="row">${F("deadline","Registration deadline","date")}${F("max","Maximum participants","number")}</div>
   <label>Description<textarea data-k="description" rows="4">${esc(e.description||"")}</textarea></label>
   <div class="row"><label>Status<select data-k="status">${["draft","published","closed"].map(s=>`<option ${e.status===s?"selected":""}>${s}</option>`).join("")}</select></label>
   </div><label>Coordinators <small>(they can edit this event's details and rules)</small></label>${S.coords.map(c=>`<label class="opt"><input type="checkbox" data-c value="${c.id}" ${(e.coordinatorUids||[]).includes(c.id)?"checked":""}>${esc(c.name)}</label>`).join("")||`<p class="muted">Create coordinator logins in the Team tab first.</p>`}${F("coordNames","Coordinator names shown publicly")}${RF(e)}
-  <h3 style="margin-top:22px">Registration form</h3><p class="muted">Name and email are always collected. Add your own questions below.</p><div id="qs">${e.questions.map((q,i)=>`<div class="q" data-i="${i}"><div class="row"><input data-f="label" value="${esc(q.label)}" placeholder="Question"><select data-f="type">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${q.type===k?"selected":""}>${v}</option>`).join("")}</select>
-  <label class="opt fit"><input type="checkbox" data-f="required" ${q.required?"checked":""}>Required</label></div>${["choice","checkbox","dropdown"].includes(q.type)?`<input data-f="options" value="${esc((q.options||[]).join(", "))}" placeholder="Options, separated by commas" style="margin-top:6px">`:""}
-  <div class="row" style="margin-top:6px"><span class="fit"><button class="btn alt sm" data-a="up">Move up</button> <button class="btn alt sm" data-a="dup">Duplicate</button> <button class="btn alt sm" data-a="del">Delete</button></span></div></div>`).join("")}</div>
-  <p><button class="btn alt" id="addq">Add question</button></p><p class="row"><button class="btn" id="save">Save event</button><button class="btn alt" id="cancel">Cancel</button></p><p id="msg" class="muted"></p></div>`;
+  ${qHtml(e)}<p class="row"><button class="btn" id="save">Save event</button><button class="btn alt" id="cancel">Cancel</button></p><p id="msg" class="muted"></p></div>`;
   const pull=()=>{document.querySelectorAll("[data-k]").forEach(i=>e[i.dataset.k]=i.value);e.coordinatorUids=[...document.querySelectorAll("[data-c]:checked")].map(i=>i.value);e.coordinatorUid=e.coordinatorUids[0]||"";
-    document.querySelectorAll("#qs .q").forEach(d=>{const q=e.questions[d.dataset.i];d.querySelectorAll("[data-f]").forEach(i=>{const f=i.dataset.f;q[f]=f==="required"?i.checked:f==="options"?i.value.split(",").map(x=>x.trim()).filter(Boolean):i.value})})};
-  document.querySelectorAll("#qs select[data-f=type]").forEach(s=>s.onchange=()=>{pull();editor()});
-  document.querySelectorAll("#qs [data-a]").forEach(b=>b.onclick=()=>{pull();const i=+b.closest(".q").dataset.i,a=b.dataset.a,qs=e.questions;
-    if(a==="del")qs.splice(i,1);if(a==="dup")qs.splice(i+1,0,{...qs[i],id:"q"+Date.now()});if(a==="up"&&i>0)[qs[i-1],qs[i]]=[qs[i],qs[i-1]];editor()});
-  $("#addq").onclick=()=>{pull();e.questions.push({id:"q"+Date.now(),label:"",type:"text",required:false,options:[]});editor()};
+    qPull(e)};
+  qBind(e,pull,editor);
   $("#cancel").onclick=()=>{S.edit=null;evTab()};
   $("#save").onclick=async()=>{pull();if(!e.name)return $("#msg").textContent="Enter an event name.";const {id,...data}=e;
     try{const r=id?doc(db,"events",id):doc(collection(db,"events"));await setDoc(r,data,{merge:true});EV.t=0;S.edit=null;evTab()}catch(x){$("#msg").textContent="Could not save: "+x.message}}}
@@ -629,7 +637,7 @@ service cloud.firestore {
         || (isCoordOf(eventId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                  'date','start','end','venue','contactEmail','contactPhone',
-                 'description','factsText','rulesText','judgingText','winner',
+                 'description','factsText','rulesText','judgingText','winner','questions',
                  'editedBy','editedAt']));
     }
 
