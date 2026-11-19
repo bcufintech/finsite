@@ -127,14 +127,15 @@ const foot=()=>`<footer class="foot"><p>Faculty coordinator: Deeksha S · Studen
 const link=id=>location.origin+location.pathname+"#/e/"+id;
 
 const isStaff=()=>/^#\/?(admin|coordinator|desk)/.test(location.hash);
-let idleT;const idle=()=>{clearTimeout(idleT);if(S.user)idleT=setTimeout(()=>signOut(auth),30*60*1000)};["click","keydown","pointermove","touchstart"].forEach(t=>addEventListener(t,idle,{passive:true}));
-onAuthStateChanged(auth,async u=>{S.user=u;S.role=null;idle();
-  if(u){try{const s=await getDoc(doc(db,"admins",u.uid));S.err=s.exists()?"":"No document found in admins with ID = your UID";const d=s.exists()?s.data():{};const rv=d.role??d.Role;S.role=rv?String(rv).trim().toLowerCase():null;if(s.exists()&&!S.role)S.err="Document found, but it has no field named role"}catch(e){S.err=e.code+": "+e.message}}
+onAuthStateChanged(auth,async u=>{S.user=u;S.role=null;S.err="";
+  if(u){const K="fs_role_"+u.uid;let c=null;try{c=localStorage.getItem(K)}catch(_){}
+    const load=async()=>{try{const s=await getDoc(doc(db,"admins",u.uid));S.err=s.exists()?"":"No document found in admins with ID = your UID";const d=s.exists()?s.data():{};const rv=d.role??d.Role;S.role=rv?String(rv).trim().toLowerCase():null;if(s.exists()&&!S.role)S.err="Document found, but it has no field named role";try{localStorage.setItem(K,S.role||"")}catch(_){}}catch(e){S.err=e.code+": "+e.message}};
+    if(c){S.role=c;if(isStaff())route();const old=c;await load();if(S.role!==old&&isStaff())route();return}
+    await load()}
   if(isStaff())route()});
 if(!isStaff())route();else A.innerHTML=head()+'<div class="wrap"><p class="muted">Loading…</p></div>';
 window.addEventListener("hashchange",()=>{S.tab=null;S.edit=null;S.review=null;route()});
 async function route(){stopCam();const h=location.hash.replace(/^#\/?/,"");
-  if(top!==self&&/^(admin|coordinator|desk)/.test(h))return void(A.innerHTML=head()+`<div class="wrap narrow"><h2>Open in a new tab</h2><p class="muted" style="text-align:center">For your security, staff pages cannot be shown inside another website.</p><p style="text-align:center"><a class="btn" href="${esc(location.href)}" target="_blank" rel="noopener">Open FINSITE</a></p></div>`);
   if(h.startsWith("admin"))return admin();if(h.startsWith("coordinator"))return coord();if(h.startsWith("desk"))return desk();
   if(h.startsWith("e/"))return eventPage(h.slice(2));return home()}
 
@@ -215,7 +216,8 @@ function showPass(evId,e,r){$("#reg").innerHTML=`<h2>You are registered</h2><p>Y
 
 /* ============ SHARED ============ */
 function login(title){A.innerHTML=head()+`<div class="wrap narrow" style="max-width:440px"><h2>${title}</h2><form id="lf" class="card"><label>Email<input name="e" type="email" autocomplete="username" required></label><label>Password<input name="p" type="password" autocomplete="current-password" required></label><p><button class="btn">Sign in</button></p><p id="err" class="muted"></p></form></div>`;
-  $("#lf").onsubmit=async ev=>{ev.preventDefault();const L=login.L=login.L||{n:0,t:0},w=L.t-Date.now();if(w>0)return $("#err").textContent="Too many attempts. Wait "+Math.ceil(w/1000)+" seconds.";const f=new FormData(ev.target);$("#err").textContent="Signing in…";try{await signInWithEmailAndPassword(auth,f.get("e").trim(),f.get("p"));L.n=0}catch(x){if(++L.n>=5){L.n=0;L.t=Date.now()+60000}$("#err").textContent="Sign-in failed. Check your email and password."}}}
+  $("#lf").onsubmit=async ev=>{ev.preventDefault();const f=new FormData(ev.target),btn=ev.target.querySelector("button");btn.disabled=true;$("#err").textContent="Signing in…";
+    try{await signInWithEmailAndPassword(auth,f.get("e").trim(),f.get("p"));$("#err").textContent="Loading…"}catch(x){btn.disabled=false;$("#err").textContent="Sign-in failed. Check your email and password."}}}
 function denied(need){A.innerHTML=head()+`<div class="wrap"><h2>No access to this page</h2><p>This page is for the ${need}. Your role: <b>${esc(S.role||"none")}</b>. Your UID: <code>${esc(S.user.uid)}</code></p>${S.err?`<p style="color:#b00020"><b>Reason:</b> ${esc(S.err)}</p>`:""}<button class="btn alt" id="so">Sign out</button></div>`;$("#so").onclick=()=>signOut(auth)}
 function shell(title,tabs){if(!S.tab||!tabs.some(t=>t[0]===S.tab))S.tab=tabs[0][0];
   A.innerHTML=head()+`<div class="wrap"><div class="row"><h2>${title}</h2><span class="fit"><button class="btn alt sm" id="so">Sign out</button></span></div><div class="tabs">${tabs.map(t=>`<button class="${S.tab===t[0]?"on":""}" data-t="${t[0]}">${t[1]}</button>`).join("")}</div><div id="pane"></div></div>`;
@@ -316,7 +318,7 @@ async function admin(){if(!S.user)return login("Admin sign in");if(S.role!=="adm
   const draw=()=>({monitor:monitor,events:evTab,coords:coordTab,regs:regTab,send:sendTab,cert:certTab,mail:mailTab,io:ioTab,team:teamTab,pwd:pwdTab,rules:rulesTab})[S.tab]();bind(draw);draw()}
 
 async function monitor(){$("#pane").innerHTML="Loading…";const evs=await allEvents(),C=async(id,a)=>(await getCountFromServer(query(collection(db,"registrations"),where("eventId","==",id),...(a?[where("checkedIn","==",true)]:[])))).data().count;
-  const D=await Promise.all(evs.map(async e=>({e,r:await C(e.id),a:await C(e.id,1)}))),tr=D.reduce((n,x)=>n+x.r,0),ta=D.reduce((n,x)=>n+x.a,0);
+  const D=await Promise.all(evs.map(async e=>({e,...(await Promise.all([C(e.id),C(e.id,1)]).then(([r,a])=>({r,a})))}))),tr=D.reduce((n,x)=>n+x.r,0),ta=D.reduce((n,x)=>n+x.a,0);
   $("#pane").innerHTML=`<div class="stats"><div class="stat"><b>${evs.length}</b><span>Events</span></div><div class="stat"><b>${tr}</b><span>Registered</span></div><div class="stat"><b>${ta}</b><span>Attended</span></div><div class="stat"><b>${tr?Math.round(ta/tr*100):0}%</b><span>Attendance</span></div></div><div class="row" style="margin-bottom:12px"><span class="fit"><button class="btn alt" id="dx">Download Excel</button></span></div><div class="scroll"><table><tr><th>Event</th><th>Coordinators</th><th>Registered</th><th>Attended</th><th>Certificates</th></tr>${D.map(({e,r,a})=>`<tr><td>${esc(e.name)}<br><span class="pill">${esc(e.status)}</span></td><td>${esc(e.coordNames||"")}</td><td>${r}</td><td>${a}</td><td>${e.certSentAt?"Sent":"Not sent"}</td></tr>`).join("")}</table></div>`;
   $("#dx").onclick=()=>xl(D.map(({e,r,a})=>({Event:e.name,Status:e.status,Date:e.date,Coordinators:e.coordNames||"",Registered:r,Attended:a,Certificates:e.certSentAt?"Sent":"Not sent"})),"dashboard")}
 
@@ -376,24 +378,27 @@ async function teamTab(){const [aq,evs]=await Promise.all([getDocs(collection(db
   $("#pane").innerHTML=`<div class="card"><h3>Create login and assign events</h3><p class="muted">Creates the account, sets the password and assigns events in one step. Share the credentials yourself; passwords are not stored.</p>
   <div class="row"><input id="tn" placeholder="Name"><input id="te" type="email" placeholder="Email (login)"><input id="tp" placeholder="Password (min 8)" value="${pw()}"><select id="tr"><option value="coordinator">Event coordinator</option><option value="desk">Entry desk</option><option value="admin">Admin</option></select></div>
   <label>Assign events</label>${evs.map(e=>`<label class="opt"><input type="checkbox" data-ev="${e.id}">${esc(e.name)}</label>`).join("")||`<p class="muted">No events yet.</p>`}
-  <p><button class="btn" id="ta">Create login and assign</button></p><div id="cred"></div></div>
+  <label class="opt"><input type="checkbox" id="tsnd" checked>Email the login details and website link to them</label><p><button class="btn" id="ta">Create login and assign</button></p><div id="cred"></div></div>
   <div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Events</th></tr>${T.map(t=>`<tr><td>${esc(t.name||"")}</td><td>${esc(t.email||"")}</td><td>${esc(t.role)}</td><td>${esc(evs.filter(e=>(e.coordinatorUids||[]).includes(t.id)||(e.deskUids||[]).includes(t.id)).map(e=>e.name).join(", "))}</td></tr>`).join("")}</table></div>`;
   $("#ta").onclick=async()=>{const n=$("#tn").value.trim(),em=$("#te").value.trim().toLowerCase(),p=$("#tp").value,r=$("#tr").value,ids=[...document.querySelectorAll("[data-ev]:checked")].map(i=>i.dataset.ev);
     if(!n||!em||p.length<8)return $("#cred").innerHTML=`<p class="muted">Enter a name, an email and a password of at least 8 characters.</p>`;
     $("#ta").disabled=true;
-    try{const txt=await makeMember(n,em,p,r,ids,evs);
-            await teamTab();$("#cred").innerHTML=`<div class="res ok"><pre style="margin:0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
+    try{const txt=await makeMember(n,em,p,r,ids,evs,$("#tsnd").checked),note=makeMember.note;
+            await teamTab();$("#cred").innerHTML=`<div class="res ok"><p>${esc(note)}</p><pre style="margin:0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
     catch(x){$("#cred").innerHTML=`<p class="muted">Could not create: ${esc(x.message)}</p>`;$("#ta").disabled=false}}}
 
 /* ============ COORDINATORS (and entry desk team) ============ */
 const roleOf=t=>String(t.role||"").trim().toLowerCase();
-async function makeMember(n,em,p,r,ids,evs){
+async function makeMember(n,em,p,r,ids,evs,send){makeMember.note="";
   const u=await createUserWithEmailAndPassword(A2(),em,p);await signOut(A2());
   await setDoc(doc(db,"admins",u.user.uid),{name:n,email:em,role:r});S.coords=null;
   if(r!=="admin")for(const id of ids){const e=evs.find(x=>x.id===id);if(!e)continue;
     if(r==="desk"){const l=[...new Set([...(e.deskUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{deskUids:l})}
     else{const l=[...new Set([...(e.coordinatorUids||[]),u.user.uid])];await updateDoc(doc(db,"events",id),{coordinatorUids:l,coordinatorUid:l[0]})}}
   EV.t=0;
+  if(send){try{const names=evs.filter(e=>ids.includes(e.id)).map(e=>e.name).join(", ");
+    await gsend([{to:em,subject:"Your FINSITE login",html:mailHtml(`Hi ${n},\n\nYour FINSITE ${r==="desk"?"entry desk":r} account is ready.\n\nWebsite: ${SITE()}\nLogin page: ${LOGIN(r)}\nEmail: ${em}\nPassword: ${p}\n${names?"\nAssigned events: "+names+"\n":""}\nPlease keep these details private.`),replyTo:"bcufintech@gmail.com"}]);makeMember.note="Login details were emailed to "+em+"."}
+    catch(x){makeMember.note="Account created, but the email was not sent: "+x.message}}
   return `FINSITE login\nURL: ${location.origin+location.pathname}#/${r==="admin"?"admin":r==="desk"?"desk":"coordinator"}\nEmail: ${em}\nPassword: ${p}`}
 async function coordTab(){EV.t=0;const [aq,evs]=await Promise.all([getDocs(collection(db,"admins")),allEvents()]);
   const T=aq.docs.map(d=>({id:d.id,...d.data()})).filter(t=>roleOf(t)==="coordinator"||roleOf(t)==="desk"),RL={coordinator:"Coordinator",desk:"Entry desk"},
@@ -401,12 +406,12 @@ async function coordTab(){EV.t=0;const [aq,evs]=await Promise.all([getDocs(colle
   $("#pane").innerHTML=`<div class="card"><h3>Add coordinator</h3><p class="muted">Creates the login and assigns events in one step. The coordinator signs in at <code>#/coordinator</code> and sees the assigned events there. Share the credentials yourself; passwords are not stored.</p>
   <div class="row"><input id="an" placeholder="Name"><input id="ae" type="email" placeholder="Email (login)"><input id="ap" placeholder="Password (min 8)" value="${pw()}"><select id="ar"><option value="coordinator">Event coordinator</option><option value="desk">Entry desk</option></select></div>
   <label>Assign events</label>${evs.map(e=>`<label class="opt"><input type="checkbox" data-aev="${e.id}">${esc(e.name)}</label>`).join("")||`<p class="muted">No events yet. Create events in the Manage tab first.</p>`}
-  <p><button class="btn" id="aadd">Add and assign</button></p><div id="acred"></div></div>
+  <label class="opt"><input type="checkbox" id="asnd" checked>Email the login details and website link to them</label><p><button class="btn" id="aadd">Add and assign</button></p><div id="acred"></div></div>
   <div class="row" style="margin-top:18px"><input id="cq" placeholder="Search name, email or event"><select id="cr"><option value="">Coordinators and entry desk</option><option value="coordinator">Coordinators only</option><option value="desk">Entry desk only</option></select><select id="cfe"><option value="">All events</option>${evs.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select><span class="fit"><button class="btn alt" id="cx">Download Excel</button></span></div><div id="clist" style="margin-top:10px"></div>`;
   $("#aadd").onclick=async()=>{const n=$("#an").value.trim(),em=$("#ae").value.trim().toLowerCase(),p=$("#ap").value,r=$("#ar").value,ids=[...document.querySelectorAll("[data-aev]:checked")].map(i=>i.dataset.aev);
     if(!n||!em||p.length<8)return $("#acred").innerHTML=`<p class="muted">Enter a name, an email and a password of at least 8 characters.</p>`;
     $("#aadd").disabled=true;
-    try{const txt=await makeMember(n,em,p,r,ids,evs);await coordTab();$("#acred").innerHTML=`<div class="res ok"><b>Added and assigned.</b><pre style="margin:6px 0 0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
+    try{const txt=await makeMember(n,em,p,r,ids,evs,$("#asnd").checked),note=makeMember.note;await coordTab();$("#acred").innerHTML=`<div class="res ok"><b>Added and assigned.</b> ${esc(note)}<pre style="margin:6px 0 0;white-space:pre-wrap;font:inherit">${esc(txt)}</pre><p><button class="btn sm" id="cp">Copy credentials</button></p></div>`;$("#cp").onclick=()=>navigator.clipboard.writeText(txt)}
     catch(x){$("#acred").innerHTML=`<p class="muted">Could not add: ${esc(x.code==="auth/email-already-in-use"?"this email already has a login. Use another email, or use Password reset.":x.message)}</p>`;$("#aadd").disabled=false}};
   const draw=()=>{const k=$("#cq").value.toLowerCase(),r=$("#cr").value,f=$("#cfe").value;
     cur=T.filter(t=>(!r||roleOf(t)===r)&&(!f||evOf(t).some(e=>e.id===f))&&[t.name,t.email,evOf(t).map(e=>e.name).join(" ")].join(" ").toLowerCase().includes(k)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
@@ -491,30 +496,34 @@ async function mailTab(){const [evs,mc]=await Promise.all([allEvents(),mailCfg(t
   <p class="muted">Mail goes out from the Google account that owns the script. Daily limit: about 100 mails on a personal Gmail, about 1,500 on Google Workspace. Only a signed-in FINSITE admin can trigger sending, and the script verifies this with Firebase on every call. After editing the code, use Deploy &gt; Manage deployments &gt; Edit &gt; New version.</p>
   <div class="row"><b>Script code</b><span class="fit"><button class="btn sm" id="gc">Copy code</button></span></div><pre id="gas" style="max-height:300px;overflow:auto;background:#0f1b2d;color:#e6edf7;padding:14px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre">${esc(code)}</pre></details></div>
   <div class="card" style="margin-top:16px"><h3>Compose mail</h3>
-  <div class="row"><label>Send to<select id="mg">${GR.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select></label><label>Event <small>(for event groups and {event} / {date})</small><select id="me">${evs.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")||`<option value="">No events</option>`}</select></label></div>
+  <div class="row"><label>Send to<select id="mg">${GR.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select></label><label>Event <small>(for event groups and {event} / {date})</small><select id="me"><option value="">All events</option>${evs.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></label></div>
   <div id="mcw" style="display:none"><label>Emails <small>One per line. Optional name: <code>Asha, asha@example.com</code></small><textarea id="mc" rows="4"></textarea></label></div>
   <label>Reply-to email <small>(replies go here)</small><input id="mr" type="email" value="bcufintech@gmail.com"></label>
   <label>Subject <small>You can use {name}, {event}, {date}, {id}</small><input id="ms" maxlength="200"></label>
-  <label>Message <small>Plain text. Links become clickable. Use {name}, {event}, {date}, {id}</small><textarea id="mb" rows="9"></textarea></label>
+  <label>Message <small>Plain text. Links become clickable. Use {name}, {event}, {date}, {id}, {site}, {login}, {email}</small><textarea id="mb" rows="9"></textarea></label>
+  <label class="opt"><input type="checkbox" id="mlg" checked>Add the website link at the end (coordinators and team also get their login page and login email)</label>
   <p class="row"><button class="btn alt" id="mp">Preview recipients</button><button class="btn alt" id="mt">Send test to me</button><button class="btn" id="msnd">Send mail</button></p><p id="mm" class="muted"></p><div id="mlist"></div></div>`;
   $("#mb").value="Hi {name},\n\n\n\nRegards,\nFINSPIRE team";
   $("#gc").onclick=async()=>{try{await navigator.clipboard.writeText(code);$("#gc").textContent="Copied"}catch(_){$("#gc").textContent="Select and copy manually"}setTimeout(()=>$("#gc").textContent="Copy code",2500)};
   $("#gs").onclick=async()=>{const u=$("#gu").value.trim(),m=$("#gm");if(!MAILURL.test(u))return m.textContent="That does not look like a Web app URL. It should start with https://script.google.com/ and end with /exec.";
     try{await setDoc(doc(db,"private","mail"),{url:u,updatedBy:S.user.uid,updatedAt:serverTimestamp()});await mailCfg(true);try{localStorage.removeItem("finsite_mail_url")}catch(_){}m.textContent="Saved. Use Send test to me to check it works."}catch(x){try{localStorage.setItem("finsite_mail_url",u)}catch(_){}mailCfg.c={...(mailCfg.c||{}),url:u};$(".pill").textContent="This device only";m.textContent="Saved on this device only, because Firestore blocked the shared save ("+x.message+"). To save it for every admin: open the Firebase rules tab, copy the Firestore rules, paste them in Firebase console > Firestore Database > Rules > Publish, then press Save URL again."}};
   const ok=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e),
-  recips=async()=>{const g=$("#mg").value,ev=evs.find(e=>e.id===$("#me").value)||{},out=new Map(),add=(n,e,id)=>{e=String(e||"").trim().toLowerCase();if(ok(e)&&!out.has(e))out.set(e,{name:String(n||"").trim()||"there",email:e,regId:id||""})};let E=ev;
-    if(g==="ev"||g==="att"||g==="no"){if(!ev.id)throw new Error("Choose an event.");(await regsOf(ev.id,true)).filter(r=>g==="ev"||(g==="att")===!!r.checkedIn).forEach(r=>add(r.name,r.email,r.regId))}
-    else if(g==="all"){E={};(await getDocs(collection(db,"registrations"))).docs.forEach(d=>{const r=d.data();add(r.name,r.email,r.regId)})}
-    else if(g==="coord"||g==="coordall"){if(g==="coord"&&!ev.id)throw new Error("Choose an event.");if(g==="coordall")E={};(await getDocs(collection(db,"admins"))).docs.filter(d=>d.data().role==="coordinator"&&(g==="coordall"||(ev.coordinatorUids||[]).includes(d.id))).forEach(d=>add(d.data().name,d.data().email))}
-    else if(g==="team"){E={};(await getDocs(collection(db,"admins"))).docs.forEach(d=>add(d.data().name,d.data().email))}
+  recips=async()=>{const g=$("#mg").value,ev=evs.find(e=>e.id===$("#me").value)||{},out=new Map(),add=(n,e,id,x)=>{e=String(e||"").trim().toLowerCase();if(ok(e)&&!out.has(e))out.set(e,{name:String(n||"").trim()||"there",email:e,regId:id||"",...(x||{})})},
+      evsOf=(uid,f)=>evs.filter(e=>(e[f]||[]).includes(uid)),ctx=(list)=>list.length===1?list[0]:{name:list.map(e=>e.name).join(", ")};let E=ev;
+    if(g==="ev"||g==="att"||g==="no"){const regs=ev.id?await regsOf(ev.id,true):(await getDocs(collection(db,"registrations"))).docs.map(d=>d.data());
+      regs.filter(r=>g==="ev"||(g==="att")===!!r.checkedIn).forEach(r=>add(r.name,r.email,r.regId,{E:ev.id?ev:(evs.find(x=>x.id===r.eventId)||{})}))}
+    else if(g==="all"){E={};(await getDocs(collection(db,"registrations"))).docs.forEach(d=>{const r=d.data();add(r.name,r.email,r.regId,{E:evs.find(x=>x.id===r.eventId)||{}})})}
+    else if(g==="coord"||g==="coordall"){const all=g==="coordall"||!ev.id;if(all)E={};(await getDocs(collection(db,"admins"))).docs.filter(d=>roleOf(d.data())==="coordinator"&&(all||(ev.coordinatorUids||[]).includes(d.id))).forEach(d=>add(d.data().name,d.data().email,"",{login:LOGIN("coordinator"),E:ev.id&&!all?ev:ctx(evsOf(d.id,"coordinatorUids"))}))}
+    else if(g==="team"){E={};(await getDocs(collection(db,"admins"))).docs.forEach(d=>{const t=d.data(),r=roleOf(t);add(t.name,t.email,"",{login:LOGIN(r),E:ctx(r==="desk"?evsOf(d.id,"deskUids"):evsOf(d.id,"coordinatorUids"))})})}
     else{E={};$("#mc").value.split("\n").forEach(l=>{const m=l.match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g)||[];m.forEach(x=>add(m.length===1?l.replace(x,"").replace(/^[,;<>\s]+|[,;<>\s]+$/g,""):"",x))})}
     return{R:[...out.values()],E}},
-  build=(R,E,sub,body,rt)=>R.map(r=>({to:r.email,subject:fill(sub,E,r.name,r.regId),html:mailHtml(fill(body,E,r.name,r.regId)),...(rt?{replyTo:rt}:{})})),
+  tail=(r,Ev)=>{if(!$("#mlg").checked)return"";let t="\n\nWebsite: "+SITE();if(Ev&&Ev.id&&!r.login)t+="\nEvent page: "+link(Ev.id);if(r.login)t+="\nLogin page: "+r.login+"\nLogin email: "+r.email+"\nPassword: the one the admin shared with you when your account was created";return t},
+  build=(R,E,sub,body,rt)=>R.map(r=>{const Ev=r.E||E,x={login:r.login,email:r.email};return{to:r.email,subject:fill(sub,Ev,r.name,r.regId,x),html:mailHtml(fill(body,Ev,r.name,r.regId,x)+tail(r,Ev)),...(rt?{replyTo:rt}:{})}}),
   val=()=>{const sub=$("#ms").value.trim(),body=$("#mb").value.trim(),rt=$("#mr").value.trim();if(!sub)throw new Error("Enter a subject.");if(!body)throw new Error("Write a message.");if(rt&&!ok(rt))throw new Error("Reply-to is not a valid email.");return{sub,body,rt}},
   q=x=>x.sent?` ${x.sent} mails were already sent before this stopped.`:"";
   $("#mg").onchange=()=>{$("#mcw").style.display=$("#mg").value==="custom"?"":"none"};
   $("#mp").onclick=async()=>{const m=$("#mm");m.textContent="Counting…";try{const{R}=await recips();m.textContent=`${R.length} recipient${R.length===1?"":"s"} with a valid email.`;$("#mlist").innerHTML=R.length?`<p class="muted">${esc(R.slice(0,8).map(r=>r.name+" <"+r.email+">").join(", "))}${R.length>8?" and "+(R.length-8)+" more":""}</p>`:""}catch(x){m.textContent=x.message}};
-  $("#mt").onclick=async()=>{const m=$("#mm");try{const{sub,body,rt}=val(),E=evs.find(e=>e.id===$("#me").value)||{};m.textContent="Sending test…";const o=await gsend(build([{name:"Test",email:S.user.email,regId:"123456"}],E,"[TEST] "+sub,body,rt));m.textContent=o.sent?`Test sent to ${S.user.email}.${o.quota!=null?" Daily mail limit left: "+o.quota+".":""}`:"The test failed. Check the script setup."}catch(x){m.textContent=x.message}};
+  $("#mt").onclick=async()=>{const m=$("#mm");try{const{sub,body,rt}=val(),E=evs.find(e=>e.id===$("#me").value)||evs[0]||{};m.textContent="Sending test…";const o=await gsend(build([{name:"Test",email:S.user.email,regId:"123456",login:LOGIN("admin")}],E,"[TEST] "+sub,body,rt));m.textContent=o.sent?`Test sent to ${S.user.email}.${o.quota!=null?" Daily mail limit left: "+o.quota+".":""}`:"The test failed. Check the script setup."}catch(x){m.textContent=x.message}};
   $("#msnd").onclick=async()=>{const m=$("#mm"),b=$("#msnd");try{const v=val(),{R,E}=await recips();if(!R.length)return m.textContent="No recipients with a valid email.";if(!confirm(`Send "${v.sub}" to ${R.length} recipient${R.length===1?"":"s"}?`))return;b.disabled=true;
       const o=await gsend(build(R,E,v.sub,v.body,v.rt),{on:(a,t)=>m.textContent=`Sent ${a} of ${t}…`});addDoc(collection(db,"auditLogs"),{action:"mail",reg:(v.sub.slice(0,60)+" · "+o.sent+" sent"),by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
       m.textContent=`Done. ${o.sent} sent${o.fail.length?`, ${o.fail.length} failed: ${o.fail.slice(0,10).join(", ")}`:""}.${o.quota!=null?" Daily mail limit left: "+o.quota+".":""}`}catch(x){m.textContent="Stopped: "+x.message+q(x)}b.disabled=false}}
@@ -531,7 +540,8 @@ async function sendTab(){const evs=await allEvents();if(!evs.length)return $("#p
   $("#evsel").onchange=e=>{S.evId=e.target.value;go()};go()}
 const imgOf=src=>new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=src});
 const FONTS=["Georgia","Bodoni Moda","Figtree","Times New Roman","Arial","Courier New"];
-const fill=(s,E,n,id)=>String(s).replace(/\{name\}/g,n).replace(/\{event\}/g,E.name||"").replace(/\{date\}/g,fmtD(E.date)).replace(/\{id\}/g,id||"");
+const SITE=()=>location.origin+location.pathname,LOGIN=r=>SITE()+"#/"+(r==="admin"?"admin":r==="desk"?"desk":"coordinator");
+const fill=(s,E,n,id,x={})=>String(s).replace(/\{site\}/g,SITE()).replace(/\{login\}/g,x.login||SITE()).replace(/\{email\}/g,x.email||"").replace(/\{name\}/g,n).replace(/\{event\}/g,E.name||"").replace(/\{date\}/g,fmtD(E.date)).replace(/\{id\}/g,id||"");
 const defItems=()=>{const b={font:"Georgia",bold:false,italic:false,align:"center",on:true,color:"#14231E",x:50};return[{...b,id:"a",text:"has successfully participated in",y:42,size:2,italic:true},{...b,id:"n",text:"{name}",y:52,size:4.5,bold:true,color:"#0E3B31"},{...b,id:"e",text:"{event}",y:62,size:2.4,bold:true},{...b,id:"d",text:"{date}",y:69,size:1.8},{...b,id:"i",text:"ID: {id}",y:92,size:1.4,font:"Arial",color:"#555555",on:false}]};
 const normCert=d=>{d=d||{};if(d.items)return{img:d.img||"",items:d.items};const it=defItems();if(d.x!==undefined){Object.assign(it[1],{x:d.x,y:d.y,size:d.size,color:d.color});it[0].on=false;it[2].on=!!d.ev;it[2].text="{event} · {date}";it[2].x=d.x;it[2].y=Math.min(95,d.y+8);it[3].on=false}return{img:d.img||"",items:it}};
 function drawCert(cv,img,c,E,n,id){const w=img.width,h=img.height,g=cv.getContext("2d");cv.width=w;cv.height=h;g.drawImage(img,0,0);g.textBaseline="middle";
