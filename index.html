@@ -112,6 +112,10 @@ header.top{backdrop-filter:none;background:rgba(238,243,239,.97)}.datecard{backd
 .row{align-items:flex-end}.row>label{margin-top:0}.row>button,.row>.btn{flex:0 0 auto}.row>h2{align-self:center}.row>.fit{align-self:center}
 .scroll table{min-width:560px}td{vertical-align:top;overflow-wrap:anywhere}pre{background:#0B2B23!important}
 @media(max-width:760px){.tabs{flex-wrap:nowrap;overflow-x:auto}.datecard{padding:16px 24px;justify-self:start}}
+.upd{display:grid;gap:12px}.upd .u{position:relative;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px 18px 14px 22px;box-shadow:var(--shadow);overflow:hidden}
+.upd .u::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(var(--gold),var(--blue))}
+.upd .u h3{margin:2px 0 4px;font-size:1.15rem}.upd .u p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}.upd .u small{color:#4B5F57;font-weight:600}
+.upd .u.pin{border-color:var(--gold);background:#FFFBF0}
 </style></head><body><div id="app"></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -177,11 +181,17 @@ const pw=()=>{const c="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 /* ============ PUBLIC ============ */
 async function home(){A.innerHTML=head()+`<div class="hero"><div class="in"><div><h1>FIN<span style="color:#FBBF24">SPIRE</span></h1><p><i>Igniting Ideas. Inspiring Innovation. Empowering Futures.</i></p><p>Hosted by M.com Fintech, Department of Studies &amp; Research in Commerce, Dr. Manmohan Singh Bengaluru City University</p><p>Pick an event, register in one form, and get your ID and QR pass instantly.</p><p><button class="btn gold" id="browse">Browse events</button></p></div>
-<div class="datecard"><small>Save the date</small><b>25</b><span>November 2026</span><em>PK Block, Dr.MSBCU</em></div></div></div><div class="wrap"><h2>Events</h2><div class="grid" id="evs">Loading…</div></div>${foot()}`;
+<div class="datecard"><small>Save the date</small><b>25</b><span>November 2026</span><em>PK Block, Dr.MSBCU</em></div></div></div><div class="wrap" id="upw" style="display:none;padding-bottom:0"><h2>Latest updates</h2><div class="upd" id="upl"></div></div><div class="wrap"><h2>Events</h2><div class="grid" id="evs">Loading…</div></div>${foot()}`;
+  loadUpdates();
   $("#browse").onclick=()=>$("#evs").scrollIntoView({behavior:"smooth",block:"start"});
   try{const c=JSON.parse(sessionStorage.getItem("hv")||"null");if(c&&Date.now()-c.t<120000)return void($("#evs").innerHTML=c.h);const q=await getDocs(query(collection(db,"events"),where("status","in",["published","closed"])));
     $("#evs").innerHTML=q.empty?`<p class="muted">No events are open yet.</p>`:q.docs.map(d=>{const e=d.data();return `<div class="card"><span class="pill s-${e.status}">${e.status==="closed"?"Registration closed":"Registration open"}</span><h3>${esc(e.name)}</h3><p class="meta"><span>${fmtD(e.date)}</span><span>${esc(e.venue)}</span></p><a class="btn" href="#/e/${d.id}">View and register</a></div>`}).join("");try{sessionStorage.setItem("hv",JSON.stringify({t:Date.now(),h:$("#evs").innerHTML}))}catch(_){}}
   catch(e){$("#evs").innerHTML=`<p class="muted">Could not load events. Check your Firebase config and rules.</p>`}}
+
+async function loadUpdates(){try{const q=await getDocs(collection(db,"updates"));const L=q.docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.text||u.title).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||((b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)-(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0)));
+  if(!L.length||!$("#upl"))return;$("#upw").style.display="";
+  $("#upl").innerHTML=L.slice(0,10).map(u=>{const d=u.createdAt&&u.createdAt.toDate?u.createdAt.toDate().toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}):"";
+    return `<div class="u${u.pinned?" pin":""}"><small>${u.pinned?"Pinned · ":""}${esc(d)}</small>${u.title?`<h3>${esc(u.title)}</h3>`:""}${u.text?`<p>${esc(u.text)}</p>`:""}${safeUrl(u.link)?`<p><a href="${esc(safeUrl(u.link))}" target="_blank" rel="noopener">${esc(u.linkLabel||"Read more")}</a></p>`:""}</div>`}).join("")}catch(_){}}
 
 async function eventPage(id){A.innerHTML=head()+`<div class="wrap">Loading…</div>`;
   if(!/^[A-Za-z0-9_-]{1,60}$/.test(id))return A.innerHTML=head()+`<div class="wrap"><h2>Event not found</h2><p>This event is unpublished or the link is wrong.</p></div>`+foot();
@@ -324,8 +334,8 @@ async function desk(){if(!S.user)return login("Entry desk sign in");if(S.role!==
 /* ============ ADMIN ============ */
 
 async function admin(){if(!S.user)return login("Admin sign in");if(S.role!=="admin")return denied("admin");
-  const bind=shell("Admin",[["monitor","Dashboard"],["events","Manage"],["coords","Coordinators"],["regs","Registrations"],["send","Results"],["cert","Certificates"],["mail","Mail"],["io","Import / Export"],["team","Team"],["pwd","Password reset"],["rules","Firebase rules"]]);
-  const draw=()=>({monitor:monitor,events:evTab,coords:coordTab,regs:regTab,send:sendTab,cert:certTab,mail:mailTab,io:ioTab,team:teamTab,pwd:pwdTab,rules:rulesTab})[S.tab]();bind(draw);draw()}
+  const bind=shell("Admin",[["monitor","Dashboard"],["events","Manage"],["updates","Updates"],["coords","Coordinators"],["regs","Registrations"],["send","Results"],["cert","Certificates"],["mail","Mail"],["io","Import / Export"],["team","Team"],["pwd","Password reset"],["rules","Firebase rules"]]);
+  const draw=()=>({monitor:monitor,events:evTab,updates:updTab,coords:coordTab,regs:regTab,send:sendTab,cert:certTab,mail:mailTab,io:ioTab,team:teamTab,pwd:pwdTab,rules:rulesTab})[S.tab]();bind(draw);draw()}
 
 async function monitor(){$("#pane").innerHTML="Loading…";const evs=await allEvents(),C=async(id,a)=>(await getCountFromServer(query(collection(db,"registrations"),where("eventId","==",id),...(a?[where("checkedIn","==",true)]:[])))).data().count;
   const D=await Promise.all(evs.map(async e=>({e,...(await Promise.all([C(e.id),C(e.id,1)]).then(([r,a])=>({r,a})))}))),tr=D.reduce((n,x)=>n+x.r,0),ta=D.reduce((n,x)=>n+x.a,0);
@@ -379,6 +389,24 @@ function editor(){const e=S.edit,F=(k,l,t="text")=>`<label>${l}<input data-k="${
   $("#cancel").onclick=()=>{S.edit=null;evTab()};
   $("#save").onclick=async()=>{pull();if(!e.name)return $("#msg").textContent="Enter an event name.";const {id,...data}=e;
     try{const r=id?doc(db,"events",id):doc(collection(db,"events"));await setDoc(r,data,{merge:true});EV.t=0;S.edit=null;evTab()}catch(x){$("#msg").textContent="Could not save: "+x.message}}}
+
+async function updTab(){$("#pane").innerHTML="Loading…";
+  const q=await getDocs(collection(db,"updates")),L=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)-(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0)),ed=S.updEdit?L.find(x=>x.id===S.updEdit):null;
+  $("#pane").innerHTML=`<div class="card"><h3>${ed?"Edit update":"Add update"}</h3><p class="muted">Updates appear on the public landing page under "Latest updates", newest first. Pinned updates stay on top.</p>
+  <label>Title <small>(optional)</small><input id="ut" maxlength="120" value="${esc(ed?ed.title||"":"")}"></label>
+  <label>Update<textarea id="ux" rows="5" maxlength="1500">${esc(ed?ed.text||"":"")}</textarea></label>
+  <div class="row"><label>Link <small>(optional, https://)</small><input id="ul" type="url" maxlength="500" value="${esc(ed?ed.link||"":"")}"></label><label>Link text <small>(optional)</small><input id="uk" maxlength="60" placeholder="Read more" value="${esc(ed?ed.linkLabel||"":"")}"></label></div>
+  <label class="opt"><input type="checkbox" id="up" ${ed&&ed.pinned?"checked":""}>Pin to top</label>
+  <p class="row"><button class="btn" id="usv">${ed?"Save changes":"Publish update"}</button>${ed?`<button class="btn alt" id="ucx">Cancel</button>`:""}</p><p id="umsg" class="muted"></p></div>
+  <h3 style="margin-top:20px">Published updates</h3><div class="upd">${L.map(u=>`<div class="u${u.pinned?" pin":""}"><small>${u.pinned?"Pinned · ":""}${u.createdAt&&u.createdAt.toDate?esc(u.createdAt.toDate().toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})):""}</small>${u.title?`<h3>${esc(u.title)}</h3>`:""}<p>${esc(u.text||"")}</p><p class="row"><button class="btn alt sm fit" data-ue="${u.id}">Edit</button><button class="btn alt sm fit" data-ud="${u.id}">Delete</button></p></div>`).join("")||`<p class="muted">No updates yet.</p>`}</div>`;
+  const M=t=>$("#umsg").textContent=t;
+  $("#usv").onclick=async()=>{const title=$("#ut").value.trim(),text=$("#ux").value.trim(),link=$("#ul").value.trim(),linkLabel=$("#uk").value.trim();
+    if(!title&&!text)return M("Write a title or an update.");if(link&&!safeUrl(link))return M("The link must start with https://");
+    $("#usv").disabled=true;const d={title,text,link,linkLabel,pinned:$("#up").checked,updatedBy:S.user.uid};
+    try{if(ed)await updateDoc(doc(db,"updates",ed.id),d);else await addDoc(collection(db,"updates"),{...d,createdAt:serverTimestamp()});S.updEdit=null;updTab()}catch(x){M("Could not save: "+x.message+" (publish the new Firestore rules from the Firebase rules tab)");$("#usv").disabled=false}};
+  const c=$("#ucx");if(c)c.onclick=()=>{S.updEdit=null;updTab()};
+  document.querySelectorAll("[data-ue]").forEach(b=>b.onclick=()=>{S.updEdit=b.dataset.ue;updTab();window.scrollTo({top:0,behavior:"smooth"})});
+  document.querySelectorAll("[data-ud]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this update?"))return;try{await deleteDoc(doc(db,"updates",b.dataset.ud));if(S.updEdit===b.dataset.ud)S.updEdit=null;updTab()}catch(x){M("Could not delete: "+x.message)}})}
 
 async function regTab(){const evs=await allEvents();if(!evs.length)return $("#pane").innerHTML=`<p class="muted">Create an event first.</p>`;
   S.evId=S.evId||evs[0].id;$("#pane").innerHTML=evSelect(evs)+`<div id="rl">Loading…</div>`;
@@ -769,6 +797,12 @@ service cloud.firestore {
     // ---------- private settings (Google Script mail URL) ----------
     match /private/{docId} { allow read, write: if isAdmin(); }
 
+    // ---------- public updates (shown on the landing page) ----------
+    match /updates/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ---------- admin-only collections ----------
     match /certs/{eventId}      { allow read, write: if isAdmin(); }
     match /volunteers/{id}      { allow read, write: if isAdmin(); }
@@ -826,7 +860,7 @@ function rulesTab(){const box=(id,t,sub,code)=>`<div class="card" style="margin-
   document.querySelectorAll("[data-cp]").forEach(b=>b.onclick=async()=>{const t=document.getElementById(b.dataset.cp).textContent;try{await navigator.clipboard.writeText(t);b.textContent="Copied"}catch(_){const r=document.createRange();r.selectNode(document.getElementById(b.dataset.cp));getSelection().removeAllRanges();getSelection().addRange(r);b.textContent="Selected, press Ctrl+C"}setTimeout(()=>b.textContent="Copy",2500)})}
 
 /* ============ FULL BACKUP ============ */
-const COLS=["events","certs","results","volunteers","registrations"];
+const COLS=["events","certs","results","volunteers","registrations","updates"];
 const ser=v=>v&&typeof v.toMillis==="function"?{__ts:v.toMillis()}:Array.isArray(v)?v.map(ser):v&&typeof v==="object"?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,ser(x)])):v;
 const des=v=>Array.isArray(v)?v.map(des):v&&typeof v==="object"?(Object.keys(v).length===1&&v.__ts!==undefined?Timestamp.fromMillis(v.__ts):Object.fromEntries(Object.entries(v).map(([k,x])=>[k,des(x)]))):v;
 function backupUI(evs,N){$("#pane .grid").insertAdjacentHTML("beforeend",`<div class="card"><h3>Full backup</h3><p class="muted">Events, regulations, certificate designs, results, volunteers and registrations in one file. Team logins are not included.</p><p class="row"><button class="btn" id="bx">Export all (.json)</button><button class="btn alt" id="bxl">Export all (Excel)</button></p><label>Restore from a backup file<input type="file" id="bf" accept=".json"></label><p><button class="btn alt" id="bi">Import backup</button></p><p id="bm" class="muted"></p></div>`);
