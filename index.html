@@ -156,6 +156,7 @@ async function route(){stopCam();const h=location.hash.replace(/^#\/?/,"");
 
 const safe=v=>typeof v==="string"&&/^[=+\-@]/.test(v)?"'"+v:v;
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
+const loadJsQR=()=>window.jsQR?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";t.onload=r;t.onerror=j;document.head.appendChild(t)});
 const loadQR=()=>window.QRCode?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
 const xl=async(rows,name)=>{await loadX();const w=XLSX.utils.book_new();XLSX.utils.book_append_sheet(w,XLSX.utils.json_to_sheet(rows.map(o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,safe(v)])))),"Data");XLSX.writeFile(w,name+".xlsx")};
 const lines=t=>String(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
@@ -284,12 +285,13 @@ const CNT=async(id,a)=>(await getCountFromServer(query(collection(db,"registrati
 const AD={t:0,l:null};async function adminsList(f){if(AD.l&&!f&&Date.now()-AD.t<600000)return AD.l;const q=await getDocs(collection(db,"admins"));AD.t=Date.now();return AD.l=q.docs.map(d=>({id:d.id,...d.data()}))}
 const MON={t:0,D:null};
 
-function drawRegs(f,isAdmin){const R=S.regs,n=R.filter(r=>r.checkedIn).length,rows=R.filter(r=>(r.name+r.email+r.regId+(r.phone||"")).toLowerCase().includes(f.toLowerCase()));
+function drawRegs(f,isAdmin){const ce=S.role==="admin"||S.role==="coordinator",R=S.regs,n=R.filter(r=>r.checkedIn).length,rows=R.filter(r=>(r.name+r.email+r.regId+(r.phone||"")).toLowerCase().includes(f.toLowerCase()));
   $("#rl").innerHTML=`<p><b>${R.length}</b> registered · <b>${n}</b> attended · ${R.length?Math.round(n/R.length*100):0}% attendance${rows.length>300?" · showing first 300 (search, or download Excel for all)":""}</p><div class="row"><input id="srch" placeholder="Search name, email or ID" value="${esc(f)}"><span class="fit"><button class="btn alt" id="rf2">Refresh</button> <button class="btn alt" id="csv">Download Excel</button></span></div>
-  <div class="scroll"><table><tr><th>ID</th><th>Name</th><th>Email</th><th>Mobile</th><th>Status</th>${isAdmin?"<th></th>":""}</tr>${rows.slice(0,300).map(r=>`<tr><td>${r.regId}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${esc(r.phone||"")}</td><td>${r.checkedIn?"Checked in":"Registered"}</td>${isAdmin?`<td>${r.checkedIn?`<button class="btn alt sm" data-u="${r._id}">Reverse</button> `:""}<button class="btn alt sm" data-x="${r._id}">Delete</button></td>`:""}</tr>`).join("")}</table></div>`;
+  <div class="scroll"><table><tr><th>ID</th><th>Name</th><th>Email</th><th>Mobile</th><th>Status</th>${isAdmin||ce?"<th></th>":""}</tr>${rows.slice(0,300).map(r=>`<tr><td>${r.regId}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${esc(r.phone||"")}</td><td>${r.checkedIn?"Checked in":"Registered"}</td>${isAdmin||ce?`<td style="white-space:nowrap">${ce?`<button class="btn alt sm" data-e="${r._id}">Edit</button> `:""}${isAdmin?`${r.checkedIn?`<button class="btn alt sm" data-u="${r._id}">Reverse</button> `:""}<button class="btn alt sm" data-x="${r._id}">Delete</button>`:""}</td>`:""}</tr>`).join("")}</table></div>`;
   $("#srch").oninput=e=>{clearTimeout(drawRegs.t);const v=e.target.value;drawRegs.t=setTimeout(()=>{drawRegs(v,isAdmin);const i=$("#srch");i.focus();i.setSelectionRange(99,99)},180)};
   $("#csv").onclick=()=>xl(R.map(r=>({ID:r.regId,Name:r.name,Email:r.email,Mobile:r.phone||"",...r.answers,"Checked in":r.checkedIn?"Yes":"No"})),"registrations");
   $("#rf2").onclick=async()=>{S.regs=await regsOf(S.evId,true);drawRegs("",isAdmin)};
+  document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>editReg(b.dataset.e,isAdmin));
   document.querySelectorAll("[data-x]").forEach(b=>b.onclick=async()=>{const r=S.regs.find(q=>q._id===b.dataset.x);if(!r||!confirm(`Delete the registration of ${r.name} (ID ${r.regId})? This cannot be undone.`))return;b.disabled=true;
     try{const w=writeBatch(db);w.delete(doc(db,"registrations",r._id));if(r.email)w.delete(doc(db,"emails",(r.eventId||S.evId)+"_"+encodeURIComponent(r.email)));await w.commit();
       addDoc(collection(db,"auditLogs"),{action:"delete",reg:r._id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
@@ -298,26 +300,70 @@ function drawRegs(f,isAdmin){const R=S.regs,n=R.filter(r=>r.checkedIn).length,ro
     await updateDoc(doc(db,"registrations",b.dataset.u),{checkedIn:false,checkedInAt:null,checkedInBy:null});
     await addDoc(collection(db,"auditLogs"),{action:"reverse",reg:b.dataset.u,by:S.user.uid,at:serverTimestamp()});S.regs=await regsOf(S.evId,true);drawRegs("",true)})}
 
+/* ---- edit a registration (admin + event coordinator) ---- */
+function editReg(id,isAdmin){const r=S.regs.find(q=>q._id===id);if(!r)return;
+  const old=document.getElementById("rmodal");if(old)old.remove();
+  const ans=Object.entries(r.answers||{}),m=document.createElement("div");m.id="rmodal";
+  m.style.cssText="position:fixed;inset:0;background:rgba(5,20,15,.55);z-index:9999;display:flex;padding:24px 12px;overflow:auto";
+  m.innerHTML=`<div class="card" style="max-width:520px;width:100%;margin:auto"><h3>Edit registration · ${esc(r.regId)}</h3><p class="muted">The registration ID and QR pass stay the same. Check-in status is not changed here.</p><label>Full name *<input id="er_n" maxlength="100" value="${esc(r.name)}"></label><label>Email *<input id="er_e" type="email" maxlength="200" value="${esc(r.email)}"></label><label>Mobile number *<input id="er_p" inputmode="numeric" maxlength="14" value="${esc(r.phone||"")}"></label>${ans.map(([k,v],i)=>`<label>${esc(String(k).trim())}<input data-a="${i}" maxlength="300" value="${esc(v)}"></label>`).join("")}<p><button class="btn" id="er_s">Save changes</button> <button class="btn alt" id="er_c">Cancel</button></p><p id="er_m" class="muted"></p></div>`;
+  document.body.appendChild(m);const close=()=>m.remove(),msg=m.querySelector("#er_m"),bt=m.querySelector("#er_s");
+  m.querySelector("#er_c").onclick=close;m.addEventListener("mousedown",e=>{if(e.target===m)close()});
+  bt.onclick=async()=>{
+    const name=m.querySelector("#er_n").value.trim().replace(/\s+/g," "),email=m.querySelector("#er_e").value.trim().toLowerCase(),phone=tel(m.querySelector("#er_p").value);
+    if(!name)return msg.textContent="Enter the full name.";
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return msg.textContent="Enter a valid email address.";
+    if(!/^[6-9]\d{9}$/.test(phone))return msg.textContent="Enter a valid 10-digit mobile number.";
+    const answers={};ans.forEach(([k],i)=>{answers[k]=m.querySelector(`[data-a="${i}"]`).value});
+    bt.disabled=true;msg.textContent="Saving…";
+    try{const ev=r.eventId||S.evId,changed=email!==String(r.email||"").toLowerCase(),
+        eo=doc(db,"emails",ev+"_"+encodeURIComponent(r.email||"")),en=doc(db,"emails",ev+"_"+encodeURIComponent(email));
+      if(changed){const x=await getDoc(en);if(x.exists()){bt.disabled=false;return msg.textContent="This email is already registered for this event."}}
+      const w=writeBatch(db);w.update(doc(db,"registrations",r._id),{name,email,phone,answers,editedBy:S.user.uid,editedAt:serverTimestamp()});
+      if(changed){if(r.email)w.delete(eo);w.set(en,{at:serverTimestamp()})}
+      await w.commit();
+      addDoc(collection(db,"auditLogs"),{action:"edit",reg:r._id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
+      close();S.regs=await regsOf(S.evId,true);drawRegs("",isAdmin)
+    }catch(x){bt.disabled=false;msg.textContent="Could not save: "+x.message+(x.code==="permission-denied"?" (publish the new Firestore rules from Admin > Firebase rules)":"")}}}
+
 async function doCheck(evId,regId,known){const rf=doc(db,"registrations",evId+"_"+regId);
-  const tx=()=>runTransaction(db,async t=>{const s=await t.get(rf);if(!s.exists())return{s:"bad"};const d=s.data();if(d.checkedIn)return{s:"dup",d};
+  const tx=()=>runTransaction(db,async t=>{const s=await t.get(rf);if(!s.exists())return{s:"bad",m:"No registration found for this pass in this event."};const d=s.data();if(d.checkedIn)return{s:"dup",d};
       t.update(rf,{checkedIn:true,checkedInAt:serverTimestamp(),checkedInBy:S.user.uid});return{s:"ok",d}});
   try{const r=known&&!known.checkedIn?await updateDoc(rf,{checkedIn:true,checkedInAt:serverTimestamp(),checkedInBy:S.user.uid}).then(()=>({s:"ok",d:known})).catch(tx):await tx();
-    if(r.s==="ok"){S.cnt=(S.cnt||0)+1;{const c=$("#cnt");if(c)c.textContent=S.cnt}const x=S.regs.find(q=>q.regId===regId&&q.eventId===evId);if(x)x.checkedIn=true;if($("#rl")&&S.regs.length)drawRegs("",S.role==="admin")}if(r.s==="dup")addDoc(collection(db,"auditLogs"),{action:"duplicate",reg:rf.id,by:S.user.uid,at:serverTimestamp()});return r}catch(x){return{s:"bad"}}}
-function showRes(r){const m={ok:["ok","Verified. Attendance marked."],dup:["dup","Already checked in."],bad:["bad","Invalid registration."]}[r.s];
+    if(r.s==="ok"){S.cnt=(S.cnt||0)+1;{const c=$("#cnt");if(c)c.textContent=S.cnt}const x=S.regs.find(q=>q.regId===regId&&q.eventId===evId);if(x)x.checkedIn=true;if($("#rl")&&S.regs.length)drawRegs("",S.role==="admin")}if(r.s==="dup")addDoc(collection(db,"auditLogs"),{action:"duplicate",reg:rf.id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});return r}catch(x){return{s:"bad",m:x.code==="permission-denied"?"Permission denied. Ask the admin to publish the latest Firestore rules and add you to this event's desk team.":"Could not check in: "+(x.message||x.code||"error")}}}
+function showRes(r){const m=r.m?["bad",r.m]:{ok:["ok","Verified. Attendance marked."],dup:["dup","Already checked in."],bad:["bad","Invalid registration."]}[r.s];
   $("#res").innerHTML=`<div class="res ${m[0]}">${m[1]}${r.d?`<div style="font-weight:500;margin-top:6px">${esc(r.d.name)} · ${r.d.regId}<br>${esc(r.d.email)}${S.evId==="ALL"?`<br>Event: ${esc(((S.deskEvs||[]).find(e=>e.id===r.d.eventId)||{}).name||"")}`:""}</div>`:""}</div>`}
 function deskPane(t){const ALL=S.evId==="ALL",EVS=S.deskEvs||[],EN=id=>(EVS.find(e=>e.id===id)||{}).name||id;
   $(t||"#pane").innerHTML=`<div class="card mist"><h3>Entry desk${ALL?" · all events":""}</h3><p class="muted">${ALL?"All events mode: scan any QR code or enter a mobile number. The person is found in whichever event they registered for.":"Enter the mobile number or scan the QR code. Either one marks the person as entered."}</p><div class="row"><input id="ph" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"><span class="fit"><button class="btn" id="fb">Find</button> <button class="btn alt" id="sc">Scan QR</button></span></div><div id="cam"></div></div><div id="res"></div><div id="rl" style="margin-top:18px">Loading…</div>`;
   if(ALL){S.regs=[];$("#rl").innerHTML=`<p class="muted">Marked entered in this session: <b id="cnt">${S.cnt||0}</b></p>`}
   else if(S.role==="admin")regsOf(S.evId,120000).then(r=>{S.regs=r;drawRegs("",true)});
   else{S.regs=[];$("#rl").innerHTML=`<p class="muted">Marked entered in this session: <b id="cnt">${S.cnt||0}</b></p><p><button class="btn alt" id="ldl">Load registrant list</button></p>`;$("#ldl").onclick=async()=>{$("#rl").textContent="Loading…";S.regs=await regsOf(S.evId);drawRegs("",false)}}
-  $("#fb").onclick=async()=>{const v=$("#ph").value.replace(/\D/g,"");if(v.length!==10)return showRes({s:"bad"});
-    const rs=ALL?(await Promise.all(EVS.map(e=>getDocs(query(collection(db,"registrations"),where("eventId","==",e.id),where("phone","==",v))).then(q=>q.docs.map(d=>d.data())).catch(()=>[])))).flat():(await getDocs(query(collection(db,"registrations"),where("eventId","==",S.evId),where("phone","==",v)))).docs.map(d=>d.data());
-    $("#res").innerHTML=!rs.length?`<div class="res bad">No registration found for this number.</div>`:rs.map(r=>`<div class="card" style="margin-top:12px"><b>${esc(r.name)}</b> · ${r.regId}${ALL?`<br><span class="muted">${esc(EN(r.eventId))}</span>`:""}<br>${esc(r.email)}<br>${r.checkedIn?`<span class="pill">Already entered</span>`:`<button class="btn" style="margin-top:8px" data-ck="${r.regId}" data-ev="${r.eventId||S.evId}">Mark entered</button>`}</div>`).join("");
+  $("#fb").onclick=async()=>{const v=$("#ph").value.replace(/\D/g,"");
+    if(v.length!==10&&v.length!==6){$("#res").innerHTML=`<div class="res bad">Enter the 10-digit mobile number or the 6-digit registration ID.</div>`;return}
+    $("#res").innerHTML=`<p class="muted">Searching…</p>`;let err="";const ids=ALL?EVS.map(e=>e.id):[S.evId];
+    const sf=p=>p.catch(x=>{err=x.code==="permission-denied"?"Permission denied. Ask the admin to publish the latest Firestore rules and add you to this event's desk team.":(x.message||"Search failed.");return[]});
+    let rs=[];
+    if(v.length===6)rs=(await Promise.all(ids.map(id=>sf(getDoc(doc(db,"registrations",id+"_"+v)).then(x=>x.exists()?[x.data()]:[]))))).flat();
+    else{rs=(await Promise.all(ids.map(id=>sf(getDocs(query(collection(db,"registrations"),where("eventId","==",id),where("phone","==",v))).then(q=>q.docs.map(d=>d.data())))))).flat();
+      if(!rs.length&&!err)rs=(await Promise.all(ids.map(id=>sf(regsOf(id,true))))).flat().filter(r=>tel(r.phone||"")===v)}
+    $("#res").innerHTML=!rs.length?`<div class="res bad">${esc(err||"No registration found for this number.")}</div>`:rs.map(r=>`<div class="card" style="margin-top:12px"><b>${esc(r.name)}</b> · ${r.regId}${ALL?`<br><span class="muted">${esc(EN(r.eventId))}</span>`:""}<br>${esc(r.email)}<br>${r.checkedIn?`<span class="pill">Already entered</span>`:`<button class="btn" style="margin-top:8px" data-ck="${r.regId}" data-ev="${r.eventId||S.evId}">Mark entered</button>`}</div>`).join("");
     document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=async()=>{showRes(await doCheck(b.dataset.ev,b.dataset.ck,rs.find(q=>q.regId===b.dataset.ck&&(q.eventId||S.evId)===b.dataset.ev)));$("#ph").value=""})};
-  $("#sc").onclick=async()=>{if(!("BarcodeDetector" in window))return $("#cam").innerHTML=`<p class="muted">This browser has no QR scanner. Use Chrome, or enter the mobile number.</p>`;
-    try{S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})}catch(x){return $("#cam").innerHTML=`<p class="muted">Camera access was blocked. Allow it in browser settings.</p>`}
-    $("#cam").innerHTML=`<video id="vid" playsinline muted></video>`;const v=$("#vid");v.srcObject=S.stream;await v.play();const det=new BarcodeDetector({formats:["qr_code"]});let busy=false;
-    const loop=async()=>{if(!S.stream)return;if(!busy){try{const c=await det.detect(v);if(c[0]){const m=/^FINSITE:([^:]+):(\d{6})$/.exec(c[0].rawValue);busy=true;showRes(m&&(ALL?EVS.some(e=>e.id===m[1]):m[1]===S.evId)?await doCheck(m[1],m[2]):{s:"bad"});setTimeout(()=>busy=false,2500)}}catch(x){}}setTimeout(loop,200)};loop()}}
+  const handle=async raw=>{raw=String(raw||"").trim();const m=/^FINSITE:([^:\s]+):(\d{6})$/.exec(raw);
+    if(!m)return showRes({s:"bad",m:"This QR code is not a FINSITE pass."});
+    if(ALL?!EVS.some(e=>e.id===m[1]):m[1]!==S.evId)return showRes({s:"bad",m:"This pass is for a different event. Choose that event (or All events) at the top of the desk."});
+    showRes(await doCheck(m[1],m[2]))};
+  $("#sc").onclick=async()=>{stopCam();
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return $("#cam").innerHTML=`<p class="muted">The camera needs a secure (https) page. Open the site with https, or enter the mobile number.</p>`;
+    try{S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false})}catch(x){return $("#cam").innerHTML=`<p class="muted">Camera could not start (${esc(x.name||"error")}). Allow camera access in the browser settings, or enter the mobile number.</p>`}
+    $("#cam").innerHTML=`<video id="vid" playsinline muted autoplay style="width:100%;max-width:360px;border-radius:10px;margin-top:10px"></video><p><button class="btn alt sm" id="sx">Stop camera</button></p>`;
+    const v=$("#vid");v.muted=true;v.srcObject=S.stream;$("#sx").onclick=()=>{stopCam();$("#cam").innerHTML=""};
+    try{await v.play()}catch(_){}
+    let det=null;try{if("BarcodeDetector" in window){const f=await BarcodeDetector.getSupportedFormats();if(f.includes("qr_code"))det=new BarcodeDetector({formats:["qr_code"]})}}catch(_){}
+    if(!det){try{await loadJsQR()}catch(_){stopCam();return $("#cam").innerHTML=`<p class="muted">Could not load the QR reader (check the internet). Enter the mobile number instead.</p>`}}
+    const cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});let busy=false;
+    const loop=async()=>{if(!S.stream)return;if(!busy&&v.readyState>=2&&v.videoWidth){try{let raw=null;
+        if(det){const c=await det.detect(v);if(c[0])raw=c[0].rawValue}
+        else{const w=Math.min(v.videoWidth,640),h=Math.round(v.videoHeight*w/v.videoWidth);cv.width=w;cv.height=h;cx.drawImage(v,0,0,w,h);const q=window.jsQR(cx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"dontInvert"});if(q)raw=q.data}
+        if(raw){busy=true;await handle(raw);setTimeout(()=>busy=false,2500)}}catch(x){busy=false}}setTimeout(loop,det?200:250)};loop()}}
 function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}}
 
 /* ============ EVENT COORDINATOR ============ */
@@ -333,7 +379,7 @@ async function coord(){if(!S.user)return login("Coordinator sign in");if(S.role!
         qBind(E,cpull,()=>{S.tab="event";draw()});
         $("#sv").onclick=async()=>{cpull();const d={};document.querySelectorAll("[data-k]").forEach(i=>d[i.dataset.k]=i.value);d.questions=E.questions||[];d.editedBy=S.user.uid;d.editedAt=serverTimestamp();
           try{await updateDoc(doc(db,"events",E.id),d);Object.assign(E,d);$("#msg").textContent="Saved. Changes are live on the public event page."}catch(x){$("#msg").textContent="Could not save: "+x.message}}},
-      regs:async()=>{$("#pane").innerHTML=`<p class="muted">Attendance is verified by the entry desk team. People show as Checked in here once the desk verifies them. Press Refresh for the latest.</p><div id="rl">Loading…</div>`;S.regs=await regsOf(S.evId,300000);drawRegs("",false)},
+      regs:async()=>{$("#pane").innerHTML=`<p class="muted">Attendance is verified by the entry desk team. People show as Checked in here once the desk verifies them. Use Edit to correct a registrant's details. Press Refresh for the latest.</p><div id="rl">Loading…</div>`;S.regs=await regsOf(S.evId,300000);drawRegs("",false)},
       results:()=>resultsPane(E)})[S.tab]()};
   bind(draw);draw()}
 
@@ -805,7 +851,23 @@ service cloud.firestore {
       // Admin: anything (e.g. reverse check-in, restore).
       // Entry desk: may only flip checkedIn false -> true, stamped with own uid.
       // Coordinators can no longer check people in; they only see the result.
+      // Coordinator: may correct name, email, mobile and form answers for their own event only.
       allow update: if isAdmin()
+        || (isCoordOf(resource.data.eventId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['name','email','phone','answers','editedBy','editedAt'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100
+            && request.resource.data.email is string
+            && request.resource.data.email.size() <= 200
+            && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+            && request.resource.data.email == request.resource.data.email.lower()
+            && request.resource.data.phone is string
+            && request.resource.data.phone.matches('^[6-9][0-9]{9}$')
+            && request.resource.data.get('answers', {}) is map
+            && request.resource.data.get('answers', {}).size() <= 30
+            && request.resource.data.editedBy == request.auth.uid
+            && request.resource.data.editedAt == request.time)
         || (isDeskOf(resource.data.eventId)
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(['checkedIn','checkedInAt','checkedInBy'])
@@ -826,8 +888,10 @@ service cloud.firestore {
       allow create: if isAdmin()
         || (request.resource.data.keys().hasOnly(['at'])
             && request.resource.data.at == request.time
-            && eventDoc(emailDocId.split('_')[0]).status == 'published');
-      allow update, delete: if isAdmin();
+            && eventDoc(emailDocId.split('_')[0]).status == 'published')
+        || isCoordOf(emailDocId.split('_')[0]);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || isCoordOf(emailDocId.split('_')[0]);
     }
 
     // ---------- results ----------
