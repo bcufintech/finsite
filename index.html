@@ -156,6 +156,8 @@ async function route(){stopCam();const h=location.hash.replace(/^#\/?/,"");
 
 const safe=v=>typeof v==="string"&&/^[=+\-@]/.test(v)?"'"+v:v;
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
+const regCount=async id=>{const x=await getDoc(doc(db,"counts",id));return x.exists()?Number(x.data().n)||0:0};
+const syncCount=async id=>{try{const n=(await getCountFromServer(query(collection(db,"registrations"),where("eventId","==",id)))).data().count;await setDoc(doc(db,"counts",id),{n});return n}catch(_){return null}};
 const loadJsQR=()=>window.jsQR?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";t.onload=r;t.onerror=j;document.head.appendChild(t)});
 const loadQR=()=>window.QRCode?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
 const xl=async(rows,name)=>{await loadX();const w=XLSX.utils.book_new();XLSX.utils.book_append_sheet(w,XLSX.utils.json_to_sheet(rows.map(o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,safe(v)])))),"Data");XLSX.writeFile(w,name+".xlsx")};
@@ -192,7 +194,8 @@ async function home(){A.innerHTML=head()+`<div class="hero"><div class="in"><div
   loadUpdates();
   $("#browse").onclick=()=>$("#evs").scrollIntoView({behavior:"smooth",block:"start"});
   try{let L=LC.g("evs",900000);if(!L){const q=await getDocs(query(collection(db,"events"),where("status","in",["published","closed"])));L=q.docs.map(d=>({id:d.id,...d.data()}));LC.s("evs",L);L.forEach(e=>LC.s("e_"+e.id,e))}
-    $("#evs").innerHTML=!L.length?`<p class="muted">No events are open yet.</p>`:L.map(e=>{return `<div class="card"><span class="pill s-${e.status}">${e.status==="closed"?"Registration closed":"Registration open"}</span><h3>${esc(e.name)}</h3><p class="meta"><span>${fmtD(e.date)}</span><span>${esc(e.venue)}</span></p><a class="btn" href="#/e/${e.id}">View and register</a></div>`}).join("")}
+    const full={};await Promise.all(L.filter(e=>Number(e.max)&&e.autoClose!==false&&e.status==="published").map(async e=>{let n=LC.g("c_"+e.id,60000);if(n===null){try{n=await regCount(e.id);LC.s("c_"+e.id,n)}catch(_){n=0}}full[e.id]=n>=Number(e.max)}));
+    $("#evs").innerHTML=!L.length?`<p class="muted">No events are open yet.</p>`:L.map(e=>{return `<div class="card"><span class="pill s-${full[e.id]?"closed":e.status}">${e.status==="closed"||full[e.id]?"Registration closed":"Registration open"}</span><h3>${esc(e.name)}</h3><p class="meta"><span>${fmtD(e.date)}</span><span>${esc(e.venue)}</span></p><a class="btn" href="#/e/${e.id}">View and register</a></div>`}).join("")}
   catch(e){$("#evs").innerHTML=`<p class="muted">Could not load events. Check your Firebase config and rules.</p>`}}
 
 async function loadUpdates(){try{const hc=LC.g("upd",1800000);if(hc!==null){if(hc&&$("#upl")){$("#upw").style.display="";$("#upl").innerHTML=hc}return}const [q1,q2]=await Promise.all([getDocs(query(collection(db,"updates"),orderBy("createdAt","desc"),limit(6))),getDocs(query(collection(db,"updates"),where("pinned","==",true),limit(3))).catch(()=>({docs:[]}))]);const seen=new Set(),L=[...q1.docs,...q2.docs].filter(d=>!seen.has(d.id)&&seen.add(d.id)).map(d=>({id:d.id,...d.data()})).filter(u=>u.text||u.title).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||((b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)-(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0)));
@@ -209,12 +212,13 @@ async function eventPage(id){A.innerHTML=head()+`<div class="wrap">Loading…</d
   if(!e)return A.innerHTML=head()+`<div class="wrap"><h2>Event not found</h2><p>This event is unpublished or the link is wrong.</p></div>`;
   gen=ge.text;PASSURL=ge.mailUrl||"";
   if(e.resultsPublished){try{let rr=LC.g("r_"+id,1800000);if(!rr){const x=await getDoc(doc(db,"results",id));rr=x.exists()?x.data():null}if(rr&&rr.status==="published"){res=rr;LC.s("r_"+id,rr)}}catch(_){}}
-  const closed=e.status!=="published"||(e.deadline&&new Date(e.deadline+"T23:59:59")<new Date());
+  let full=false;{const mx=Number(e.max)||0;if(e.status==="published"&&mx&&e.autoClose!==false){try{full=(await regCount(id))>=mx}catch(_){}}}
+  const closed=e.status!=="published"||full||(e.deadline&&new Date(e.deadline+"T23:59:59")<new Date());
   A.innerHTML=head()+`<div class="hero"><div class="in"><div><h1>${esc(e.name)}</h1><p>${[fmtD(e.date),e.start?esc(e.start)+(e.end?"–"+esc(e.end):""):"",esc(e.venue||"")].filter(Boolean).join(" · ")}</p>${e.organiser?`<p>Organised by ${esc(e.organiser)}</p>`:""}</div>
   <div class="pass"><div class="muted">${closed?"Registration closed":"Registration open"}</div>${e.deadline?`<div class="muted">Closes ${fmtD(e.deadline)}</div>`:""}</div></div></div>
   <div class="wrap"><p style="white-space:pre-wrap">${esc(e.description)}</p>${RV(e)}${gen?`<h2>General regulations</h2><ol>${lines(gen).map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}${e.contactEmail||e.contactPhone?`<p class="muted">Contact: ${[esc(e.contactEmail||""),esc(e.contactPhone||"")].filter(Boolean).join(" · ")}</p>`:""}
   ${res?`<div class="card mist"><h2>Results</h2><p style="white-space:pre-wrap">${esc(res.summary)}</p>${safeUrl(res.fileUrl)?`<p><a href="${esc(safeUrl(res.fileUrl))}" target="_blank" rel="noopener">Open results file</a></p>`:""}</div>`:""}
-  <div id="reg">${closed?`<div class="card mist">Registration for this event is closed.</div>`:`<h2>Register</h2><form id="rf" class="card"><label>Full name *<input name="__name" maxlength="100" autocomplete="name" required></label><label>Email address *<input name="__email" type="email" maxlength="200" autocomplete="email" required></label><label>Mobile number *<input name="__phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="10-digit mobile number" required></label><input name="__hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">${(e.questions||[]).map(field).join("")}<p><button class="btn">Register now</button></p><p id="err" class="muted"></p></form>`}</div></div>`;
+  <div id="reg">${closed?`<div class="card mist">${full?"Registration is full. The maximum number of participants has been reached.":"Registration for this event is closed."}</div>`:`<h2>Register</h2><form id="rf" class="card"><label>Full name *<input name="__name" maxlength="100" autocomplete="name" required></label><label>Email address *<input name="__email" type="email" maxlength="200" autocomplete="email" required></label><label>Mobile number *<input name="__phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="10-digit mobile number" required></label><input name="__hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">${(e.questions||[]).map(field).join("")}<p><button class="btn">Register now</button></p><p id="err" class="muted"></p></form>`}</div></div>`;
   const f=$("#rf");if(f)f.onsubmit=ev=>{ev.preventDefault();submitReg(id,e,f)}}
 
 function field(q){const n="q_"+q.id,r=q.required?"required":"",L=`${esc(q.label)}${q.required?" *":""}`,o=q.options||[];
@@ -231,12 +235,13 @@ async function submitReg(evId,e,f){const fd=new FormData(f),btn=f.querySelector(
   btn.disabled=true;btn.textContent="Registering…";
   const answers={};(e.questions||[]).forEach((q,i)=>{const v=fd.getAll("q_"+q.id);let k=String(q.label||"").trim();if(!k||/^__.*__$/.test(k))k="Question "+(i+1);while(k in answers)k+=" ";answers[k]=q.type==="checkbox"?v.join(", "):(v[0]||"")});
   let last;
-  for(let i=0;i<5;i++){const regId=String(Math.floor(100000+Math.random()*900000)),b=writeBatch(db);
+  for(let i=0;i<5;i++){const regId=String(Math.floor(100000+Math.random()*900000)),b=writeBatch(db),mx=Number(e.max)||0,track=mx&&e.autoClose!==false;
+    if(track){let cn=0;try{cn=await regCount(evId)}catch(_){}if(cn>=mx)return reset("Registration is full. The maximum number of participants has been reached.");b.set(doc(db,"counts",evId),{n:cn+1})}
     b.set(doc(db,"registrations",evId+"_"+regId),{eventId:evId,regId,name,email,phone,answers,checkedIn:false,createdAt:serverTimestamp()});
     b.set(doc(db,"emails",evId+"_"+encodeURIComponent(email)),{at:serverTimestamp()});
     try{await b.commit()}catch(x){last=x;if(x.code==="unavailable"||x.code==="deadline-exceeded")break;continue}
     try{showPass(evId,e,{regId,name,email})}catch(x){console.error(x)}sendPassMail(evId,{regId,name,email});return}
-  console.error(last);reset(last&&(last.code==="unavailable"||last.code==="deadline-exceeded")?"No connection. Check your internet and try again.":"This email may already be registered for this event, or registration has closed. If not, try again or contact the organiser.")}
+  console.error(last);reset(last&&(last.code==="unavailable"||last.code==="deadline-exceeded")?"No connection. Check your internet and try again.":"This email may already be registered for this event, or registration has closed or the event is full. If not, try again or contact the organiser.")}
 
 async function sendPassMail(evId,r){const say=t=>{const x=$("#pmail");if(x)x.textContent=t},fail="We could not email the pass right now. Please keep this pass: take a screenshot or download it.";
   try{let u=PASSURL;if(!MAILURL.test(u||"")){u=LC.g("mu",86400000)||"";if(!MAILURL.test(u)){const g=await getDoc(doc(db,"settings","mailer")).catch(()=>null);u=g&&g.exists()?String(g.data().url||""):"";if(MAILURL.test(u))LC.s("mu",u)}}
@@ -294,7 +299,7 @@ function drawRegs(f,isAdmin){const ce=S.role==="admin"||S.role==="coordinator",R
   document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>editReg(b.dataset.e,isAdmin));
   document.querySelectorAll("[data-x]").forEach(b=>b.onclick=async()=>{const r=S.regs.find(q=>q._id===b.dataset.x);if(!r||!confirm(`Delete the registration of ${r.name} (ID ${r.regId})? This cannot be undone.`))return;b.disabled=true;
     try{const w=writeBatch(db);w.delete(doc(db,"registrations",r._id));if(r.email)w.delete(doc(db,"emails",(r.eventId||S.evId)+"_"+encodeURIComponent(r.email)));await w.commit();
-      addDoc(collection(db,"auditLogs"),{action:"delete",reg:r._id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
+      addDoc(collection(db,"auditLogs"),{action:"delete",reg:r._id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});await syncCount(r.eventId||S.evId);
       S.regs=await regsOf(S.evId,true);drawRegs("",true)}catch(x){b.disabled=false;alert("Could not delete: "+x.message)}});
   document.querySelectorAll("[data-u]").forEach(b=>b.onclick=async()=>{if(!confirm("Reverse this check-in?"))return;
     await updateDoc(doc(db,"registrations",b.dataset.u),{checkedIn:false,checkedInAt:null,checkedInBy:null});
@@ -333,7 +338,7 @@ async function doCheck(evId,regId,known){const rf=doc(db,"registrations",evId+"_
 function showRes(r){const m=r.m?["bad",r.m]:{ok:["ok","Verified. Attendance marked."],dup:["dup","Already checked in."],bad:["bad","Invalid registration."]}[r.s];
   $("#res").innerHTML=`<div class="res ${m[0]}">${m[1]}${r.d?`<div style="font-weight:500;margin-top:6px">${esc(r.d.name)} · ${r.d.regId}<br>${esc(r.d.email)}${S.evId==="ALL"?`<br>Event: ${esc(((S.deskEvs||[]).find(e=>e.id===r.d.eventId)||{}).name||"")}`:""}</div>`:""}</div>`}
 function deskPane(t){const ALL=S.evId==="ALL",EVS=S.deskEvs||[],EN=id=>(EVS.find(e=>e.id===id)||{}).name||id;
-  $(t||"#pane").innerHTML=`<div class="card mist"><h3>Entry desk${ALL?" · all events":""}</h3><p class="muted">${ALL?"All events mode: scan any QR code or enter a mobile number. The person is found in whichever event they registered for.":"Enter the mobile number or scan the QR code. Either one marks the person as entered."}</p><div class="row"><input id="ph" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"><span class="fit"><button class="btn" id="fb">Find</button> <button class="btn alt" id="sc">Scan QR</button></span></div><div id="cam"></div></div><div id="res"></div><div id="rl" style="margin-top:18px">Loading…</div>`;
+  $(t||"#pane").innerHTML=`<div class="card mist"><h3>Entry desk${ALL?" · all events":""}</h3><p class="muted">${ALL?"All events mode: scan any QR code or enter a mobile number. The person is found in whichever event they registered for.":"Enter the mobile number or scan the QR code. Either one marks the person as entered."}</p><div class="row"><input id="ph" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"><span class="fit"><button class="btn" id="fb">Find</button> <button class="btn alt" id="sc">Scan QR</button> <button class="btn alt" id="sp" type="button">Scan from photo</button><input type="file" id="sf" accept="image/*" capture="environment" style="display:none"></span></div><div id="cam"></div></div><div id="res"></div><div id="rl" style="margin-top:18px">Loading…</div>`;
   if(ALL){S.regs=[];$("#rl").innerHTML=`<p class="muted">Marked entered in this session: <b id="cnt">${S.cnt||0}</b></p>`}
   else if(S.role==="admin")regsOf(S.evId,120000).then(r=>{S.regs=r;drawRegs("",true)});
   else{S.regs=[];$("#rl").innerHTML=`<p class="muted">Marked entered in this session: <b id="cnt">${S.cnt||0}</b></p><p><button class="btn alt" id="ldl">Load registrant list</button></p>`;$("#ldl").onclick=async()=>{$("#rl").textContent="Loading…";S.regs=await regsOf(S.evId);drawRegs("",false)}}
@@ -347,23 +352,30 @@ function deskPane(t){const ALL=S.evId==="ALL",EVS=S.deskEvs||[],EN=id=>(EVS.find
       if(!rs.length&&!err)rs=(await Promise.all(ids.map(id=>sf(regsOf(id,true))))).flat().filter(r=>tel(r.phone||"")===v)}
     $("#res").innerHTML=!rs.length?`<div class="res bad">${esc(err||"No registration found for this number.")}</div>`:rs.map(r=>`<div class="card" style="margin-top:12px"><b>${esc(r.name)}</b> · ${r.regId}${ALL?`<br><span class="muted">${esc(EN(r.eventId))}</span>`:""}<br>${esc(r.email)}<br>${r.checkedIn?`<span class="pill">Already entered</span>`:`<button class="btn" style="margin-top:8px" data-ck="${r.regId}" data-ev="${r.eventId||S.evId}">Mark entered</button>`}</div>`).join("");
     document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=async()=>{showRes(await doCheck(b.dataset.ev,b.dataset.ck,rs.find(q=>q.regId===b.dataset.ck&&(q.eventId||S.evId)===b.dataset.ev)));$("#ph").value=""})};
+  $("#sp").onclick=()=>$("#sf").click();
+  const sts=t=>{const x=$("#scs");if(x)x.textContent=t};
   const handle=async raw=>{raw=String(raw||"").trim();const m=/^FINSITE:([^:\s]+):(\d{6})$/.exec(raw);
-    if(!m)return showRes({s:"bad",m:"This QR code is not a FINSITE pass."});
+    if(!m){sts("Read: "+raw.slice(0,60));return showRes({s:"bad",m:"This QR code is not a FINSITE pass."})}
     if(ALL?!EVS.some(e=>e.id===m[1]):m[1]!==S.evId)return showRes({s:"bad",m:"This pass is for a different event. Choose that event (or All events) at the top of the desk."});
-    showRes(await doCheck(m[1],m[2]))};
+    sts("Pass found, checking…");showRes(await doCheck(m[1],m[2]));sts("Ready for the next pass.")};
+  const decodeImg=async f=>{await loadJsQR();const bmp=await createImageBitmap(f),sz=[1000,600,1400];
+    for(const mw of sz){const sc=Math.min(1,mw/Math.max(bmp.width,bmp.height)),w=Math.round(bmp.width*sc),h=Math.round(bmp.height*sc),c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(bmp,0,0,w,h);const q=window.jsQR(x.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"attemptBoth"});if(q)return q.data}return null};
+  $("#sf").onchange=async ev=>{const f=ev.target.files&&ev.target.files[0];ev.target.value="";if(!f)return;sts("Reading photo…");
+    try{const raw=await decodeImg(f);if(!raw){sts("");return showRes({s:"bad",m:"No QR code found in that photo. Try again, closer and in better light."})}await handle(raw)}catch(x){showRes({s:"bad",m:"Could not read that photo: "+(x.message||"error")})}};
   $("#sc").onclick=async()=>{stopCam();
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return $("#cam").innerHTML=`<p class="muted">The camera needs a secure (https) page. Open the site with https, or enter the mobile number.</p>`;
-    try{S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false})}catch(x){return $("#cam").innerHTML=`<p class="muted">Camera could not start (${esc(x.name||"error")}). Allow camera access in the browser settings, or enter the mobile number.</p>`}
-    $("#cam").innerHTML=`<video id="vid" playsinline muted autoplay style="width:100%;max-width:360px;border-radius:10px;margin-top:10px"></video><p><button class="btn alt sm" id="sx">Stop camera</button></p>`;
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return $("#cam").innerHTML=`<p class="muted">The live camera needs a secure (https) page. Open the site with https, or use Scan from photo, or enter the mobile number.</p>`;
+    try{S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false})}catch(x){return $("#cam").innerHTML=`<p class="muted">Camera could not start (${esc(x.name||"error")}). Allow camera access in the browser settings, or use Scan from photo, or enter the mobile number.</p>`}
+    $("#cam").innerHTML=`<video id="vid" playsinline muted autoplay style="width:100%;max-width:360px;border-radius:10px;margin-top:10px"></video><p class="muted" id="scs">Starting camera…</p><p><button class="btn alt sm" id="sx">Stop camera</button></p>`;
     const v=$("#vid");v.muted=true;v.srcObject=S.stream;$("#sx").onclick=()=>{stopCam();$("#cam").innerHTML=""};
     try{await v.play()}catch(_){}
     let det=null;try{if("BarcodeDetector" in window){const f=await BarcodeDetector.getSupportedFormats();if(f.includes("qr_code"))det=new BarcodeDetector({formats:["qr_code"]})}}catch(_){}
-    if(!det){try{await loadJsQR()}catch(_){stopCam();return $("#cam").innerHTML=`<p class="muted">Could not load the QR reader (check the internet). Enter the mobile number instead.</p>`}}
+    if(!det){try{await loadJsQR()}catch(_){stopCam();return $("#cam").innerHTML=`<p class="muted">Could not load the QR reader (check the internet). Use Scan from photo or enter the mobile number.</p>`}}
+    sts("Point the camera at the QR code.");
     const cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});let busy=false;
     const loop=async()=>{if(!S.stream)return;if(!busy&&v.readyState>=2&&v.videoWidth){try{let raw=null;
-        if(det){const c=await det.detect(v);if(c[0])raw=c[0].rawValue}
-        else{const w=Math.min(v.videoWidth,640),h=Math.round(v.videoHeight*w/v.videoWidth);cv.width=w;cv.height=h;cx.drawImage(v,0,0,w,h);const q=window.jsQR(cx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"dontInvert"});if(q)raw=q.data}
-        if(raw){busy=true;await handle(raw);setTimeout(()=>busy=false,2500)}}catch(x){busy=false}}setTimeout(loop,det?200:250)};loop()}}
+        if(det){try{const c=await det.detect(v);if(c[0])raw=c[0].rawValue}catch(_){det=null;await loadJsQR()}}
+        if(!det&&!raw){const w=Math.min(v.videoWidth,720),h=Math.round(v.videoHeight*w/v.videoWidth);cv.width=w;cv.height=h;cx.drawImage(v,0,0,w,h);const q=window.jsQR(cx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"attemptBoth"});if(q)raw=q.data}
+        if(raw){busy=true;await handle(raw);setTimeout(()=>busy=false,2500)}}catch(x){busy=false;sts("Scan error: "+(x.message||x))}}setTimeout(loop,det?200:250)};loop()}}
 function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}}
 
 /* ============ EVENT COORDINATOR ============ */
@@ -412,9 +424,9 @@ async function admin(){if(!S.user)return login("Admin sign in");if(S.role!=="adm
   const draw=()=>({monitor:monitor,events:evTab,updates:updTab,coords:coordTab,regs:regTab,send:sendTab,cert:certTab,mail:mailTab,io:ioTab,team:teamTab,pwd:pwdTab,rules:rulesTab})[S.tab]();bind(draw);draw()}
 
 async function monitor(f){$("#pane").innerHTML="Loading…";const evs=await allEvents();let D;
-  if(!f&&MON.D&&Date.now()-MON.t<600000&&MON.D.length===evs.length)D=MON.D.map(x=>({...x,e:evs.find(y=>y.id===x.e.id)||x.e}));else{D=await Promise.all(evs.map(async e=>({e,r:await CNT(e.id),a:await CNT(e.id,1)})));MON.D=D;MON.t=Date.now()}
+  if(!f&&MON.D&&Date.now()-MON.t<600000&&MON.D.length===evs.length)D=MON.D.map(x=>({...x,e:evs.find(y=>y.id===x.e.id)||x.e}));else{D=await Promise.all(evs.map(async e=>({e,r:await CNT(e.id),a:await CNT(e.id,1)})));MON.D=D;MON.t=Date.now();D.forEach(({e,r})=>{if(e.max)setDoc(doc(db,"counts",e.id),{n:r}).catch(()=>{})})}
   const tr=D.reduce((n,x)=>n+x.r,0),ta=D.reduce((n,x)=>n+x.a,0);
-  $("#pane").innerHTML=`<div class="stats"><div class="stat"><b>${evs.length}</b><span>Events</span></div><div class="stat"><b>${tr}</b><span>Registered</span></div><div class="stat"><b>${ta}</b><span>Attended</span></div><div class="stat"><b>${tr?Math.round(ta/tr*100):0}%</b><span>Attendance</span></div></div><div class="row" style="margin-bottom:12px"><span class="fit"><button class="btn alt" id="mrf">Refresh counts</button> <button class="btn alt" id="dx">Download Excel</button></span></div><div class="scroll"><table><tr><th>Event</th><th>Coordinators</th><th>Registered</th><th>Attended</th><th>Certificates</th></tr>${D.map(({e,r,a})=>`<tr><td>${esc(e.name)}<br><span class="pill">${esc(e.status)}</span></td><td>${esc(e.coordNames||"")}</td><td>${r}</td><td>${a}</td><td>${e.certSentAt?"Sent":"Not sent"}</td></tr>`).join("")}</table></div>`;
+  $("#pane").innerHTML=`<div class="stats"><div class="stat"><b>${evs.length}</b><span>Events</span></div><div class="stat"><b>${tr}</b><span>Registered</span></div><div class="stat"><b>${ta}</b><span>Attended</span></div><div class="stat"><b>${tr?Math.round(ta/tr*100):0}%</b><span>Attendance</span></div></div><div class="row" style="margin-bottom:12px"><span class="fit"><button class="btn alt" id="mrf">Refresh counts</button> <button class="btn alt" id="dx">Download Excel</button></span></div><div class="scroll"><table><tr><th>Event</th><th>Coordinators</th><th>Registered</th><th>Attended</th><th>Certificates</th></tr>${D.map(({e,r,a})=>`<tr><td>${esc(e.name)}<br><span class="pill">${esc(e.status)}</span></td><td>${esc(e.coordNames||"")}</td><td>${r}${Number(e.max)?` / ${esc(e.max)}${e.autoClose!==false&&r>=Number(e.max)?" <span class=\"pill\">Full</span>":""}`:""}</td><td>${a}</td><td>${e.certSentAt?"Sent":"Not sent"}</td></tr>`).join("")}</table></div>`;
   $("#mrf").onclick=()=>monitor(true);
   $("#dx").onclick=()=>xl(D.map(({e,r,a})=>({Event:e.name,Status:e.status,Date:e.date,Coordinators:e.coordNames||"",Registered:r,Attended:a,Certificates:e.certSentAt?"Sent":"Not sent"})),"dashboard")}
 
@@ -451,17 +463,17 @@ const qBind=(e,pull,redraw)=>{e.questions=e.questions||[];
   $("#addq").onclick=()=>{pull();e.questions.push({id:"q"+Date.now(),label:"",type:"text",required:false,options:[]});redraw()}};
 
 function editor(){const e=S.edit,F=(k,l,t="text")=>`<label>${l}<input data-k="${k}" type="${t}" value="${esc(e[k]||"")}"></label>`;
-  $("#pane").innerHTML=`<div class="card"><h3>${e.id?"Edit event":"New event"}</h3>${F("name","Event name")}<div class="row">${F("date","Date","date")}${F("start","Start time","time")}${F("end","End time","time")}</div>${F("venue","Venue")}${F("organiser","Organiser")}<div class="row">${F("contactEmail","Contact email","email")}${F("contactPhone","Contact number")}</div><div class="row">${F("deadline","Registration deadline","date")}${F("max","Maximum participants","number")}</div>
+  $("#pane").innerHTML=`<div class="card"><h3>${e.id?"Edit event":"New event"}</h3>${F("name","Event name")}<div class="row">${F("date","Date","date")}${F("start","Start time","time")}${F("end","End time","time")}</div>${F("venue","Venue")}${F("organiser","Organiser")}<div class="row">${F("contactEmail","Contact email","email")}${F("contactPhone","Contact number")}</div><div class="row">${F("deadline","Registration deadline","date")}${F("max","Maximum participants","number")}</div><label class="opt"><input type="checkbox" data-ac ${e.autoClose===false?"":"checked"}> Close registration automatically when the maximum is reached</label>
   <label>Description<textarea data-k="description" rows="4">${esc(e.description||"")}</textarea></label>
   <div class="row"><label>Status<select data-k="status">${["draft","published","closed"].map(s=>`<option ${e.status===s?"selected":""}>${s}</option>`).join("")}</select></label>
   </div><label>Coordinators <small>(they can edit this event's details and rules)</small></label>${S.coords.map(c=>`<label class="opt"><input type="checkbox" data-c value="${c.id}" ${(e.coordinatorUids||[]).includes(c.id)?"checked":""}>${esc(c.name)}</label>`).join("")||`<p class="muted">Create coordinator logins in the Team tab first.</p>`}${F("coordNames","Coordinator names shown publicly")}${RF(e)}
   ${qHtml(e)}<p class="row"><button class="btn" id="save">Save event</button><button class="btn alt" id="cancel">Cancel</button></p><p id="msg" class="muted"></p></div>`;
-  const pull=()=>{document.querySelectorAll("[data-k]").forEach(i=>e[i.dataset.k]=i.value);e.coordinatorUids=[...document.querySelectorAll("[data-c]:checked")].map(i=>i.value);e.coordinatorUid=e.coordinatorUids[0]||"";
+  const pull=()=>{document.querySelectorAll("[data-k]").forEach(i=>e[i.dataset.k]=i.value);{const ac=document.querySelector("[data-ac]");if(ac)e.autoClose=ac.checked}e.coordinatorUids=[...document.querySelectorAll("[data-c]:checked")].map(i=>i.value);e.coordinatorUid=e.coordinatorUids[0]||"";
     qPull(e)};
   qBind(e,pull,editor);
   $("#cancel").onclick=()=>{S.edit=null;evTab()};
   $("#save").onclick=async()=>{pull();if(!e.name)return $("#msg").textContent="Enter an event name.";const {id,...data}=e;
-    try{const r=id?doc(db,"events",id):doc(collection(db,"events"));await setDoc(r,data,{merge:true});EV.t=0;S.edit=null;evTab()}catch(x){$("#msg").textContent="Could not save: "+x.message}}}
+    try{const r=id?doc(db,"events",id):doc(collection(db,"events"));await setDoc(r,data,{merge:true});if(Number(data.max))await syncCount(r.id);EV.t=0;S.edit=null;evTab()}catch(x){$("#msg").textContent="Could not save: "+x.message}}}
 
 async function updTab(){$("#pane").innerHTML="Loading…";
   if(!UL.l||Date.now()-UL.t>300000){const q=await getDocs(collection(db,"updates"));UL.l=q.docs.map(d=>({id:d.id,...d.data()}));UL.t=Date.now()}const L=[...UL.l].sort((a,b)=>(b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)-(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0)),ed=S.updEdit?L.find(x=>x.id===S.updEdit):null;
@@ -789,6 +801,13 @@ service cloud.firestore {
         && (request.auth.uid in eventDoc(id).get('deskUids', [])
             || eventDoc(id).get('deskUids', []).size() == 0);
     }
+    // Auto-close: blocks a registration once the counter (written in the same batch) passes the event's max.
+    function underMax(eid) {
+      let ev = eventDoc(eid);
+      let m = string(ev.get('max', ''));
+      return ev.get('autoClose', true) == false || m == '' || m == '0'
+        || getAfter(/databases/$(database)/documents/counts/$(eid)).data.n <= int(m);
+    }
 
     // ---------- team (admins collection) ----------
     // Each signed-in user may read only their own doc (needed to find their role).
@@ -844,6 +863,7 @@ service cloud.firestore {
             && (!('answers' in request.resource.data) || (request.resource.data.answers is map && request.resource.data.answers.size() <= 30))
             && request.resource.data.checkedIn == false
             && request.resource.data.createdAt == request.time
+            && underMax(request.resource.data.eventId)
             && eventDoc(request.resource.data.eventId).status == 'published');
 
       allow read: if isAdmin() || isCoordOf(resource.data.eventId) || isDeskOf(resource.data.eventId);
@@ -876,6 +896,21 @@ service cloud.firestore {
             && request.resource.data.checkedInBy == request.auth.uid
             && request.resource.data.checkedInAt == request.time);
 
+      allow delete: if isAdmin();
+    }
+
+    // ---------- registration counter (public read; +1 per registration; admin can resync) ----------
+    match /counts/{eid} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        || (request.resource.data.keys().hasOnly(['n'])
+            && request.resource.data.n == 1
+            && eventDoc(eid).status == 'published');
+      allow update: if isAdmin()
+        || (request.resource.data.keys().hasOnly(['n'])
+            && request.resource.data.n == resource.data.n + 1
+            && eventDoc(eid).status == 'published');
       allow delete: if isAdmin();
     }
 
