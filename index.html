@@ -497,15 +497,10 @@ async function updTab(){$("#pane").innerHTML="Loading…";
   document.querySelectorAll("[data-ud]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this update?"))return;try{await deleteDoc(doc(db,"updates",b.dataset.ud));UL.l=null;if(S.updEdit===b.dataset.ud)S.updEdit=null;updTab()}catch(x){M("Could not delete: "+x.message)}})}
 
 async function regTab(){const evs=await allEvents();if(!evs.length)return $("#pane").innerHTML=`<p class="muted">Create an event first.</p>`;
-  S.evId=S.evId||evs[0].id;$("#pane").innerHTML=evSelect(evs)+`<details class="card mist" style="margin:12px 0"><summary><b>Email locks</b> · fix "already registered" after a delete</summary><p class="muted">Every registration locks its email so nobody registers twice. If a registration was removed outside this page (for example in the Firebase console), its lock can stay behind. Clean up removes locks that have no registration, or unlock one email.</p><div class="row"><span class="fit"><button class="btn alt sm" id="lk1">Clean stale locks (this event)</button></span><input id="lke" type="email" placeholder="Email to unlock"><span class="fit"><button class="btn alt sm" id="lk2">Unlock this email</button></span></div><p id="lkm" class="muted"></p></details><div id="rl">Loading…</div>`;
-  const load=async()=>{S.regs=await regsOf(S.evId);drawRegs("",true)};$("#evsel").onchange=e=>{S.evId=e.target.value;load()};
-  $("#lk1").onclick=async()=>{const m=$("#lkm");m.textContent="Checking…";try{const regs=await regsOf(S.evId,true),have=new Set(regs.map(r=>encodeURIComponent(String(r.email||"").trim().toLowerCase()))),all=await getDocs(collection(db,"emails")),pre=S.evId+"_",stale=all.docs.filter(d=>d.id.startsWith(pre)&&!have.has(d.id.slice(pre.length)));
-    for(let i=0;i<stale.length;i+=400){const w=writeBatch(db);stale.slice(i,i+400).forEach(d=>w.delete(d.ref));await w.commit()}
-    m.textContent=stale.length?"Removed "+stale.length+" stale lock(s). Those emails can register again.":"No stale locks found for this event."}catch(x){m.textContent="Failed: "+x.message}};
-  $("#lk2").onclick=async()=>{const m=$("#lkm"),em=$("#lke").value.trim().toLowerCase();if(!em)return m.textContent="Enter an email first.";m.textContent="Checking…";
-    try{const regs=await regsOf(S.evId,true);if(regs.some(r=>String(r.email||"").trim().toLowerCase()===em))return m.textContent="This email still has a registration in this event. Delete that registration first.";
-      await deleteDoc(doc(db,"emails",S.evId+"_"+encodeURIComponent(em)));m.textContent=em+" can register again."}catch(x){m.textContent="Failed: "+x.message}};
-  load()}
+  S.evId=S.evId||evs[0].id;$("#pane").innerHTML=evSelect(evs)+`<div id="rl">Loading…</div>`;
+  const load=async()=>{S.regs=await regsOf(S.evId);drawRegs("",true)};$("#evsel").onchange=e=>{S.evId=e.target.value;load().then(()=>tidy())};
+  const tidy=async()=>{if(tidy.d&&tidy.d[S.evId])return;(tidy.d=tidy.d||{})[S.evId]=1;try{const regs=await regsOf(S.evId,true),have=new Set(regs.map(r=>encodeURIComponent(String(r.email||"").trim().toLowerCase()))),all=await getDocs(collection(db,"emails")),pre=S.evId+"_",stale=all.docs.filter(d=>d.id.startsWith(pre)&&!have.has(d.id.slice(pre.length)));for(let i=0;i<stale.length;i+=400){const w=writeBatch(db);stale.slice(i,i+400).forEach(d=>w.delete(d.ref));await w.commit()}}catch(_){}};
+  load().then(tidy)}
 
 async function teamTab(){const [T,evs]=await Promise.all([adminsList(),allEvents()]);
   $("#pane").innerHTML=`<div class="card"><h3>Create login and assign events</h3><p class="muted">Creates the account, sets the password and assigns events in one step. Share the credentials yourself; passwords are not stored.</p>
