@@ -156,6 +156,7 @@ async function route(){stopCam();const h=location.hash.replace(/^#\/?/,"");
 
 const safe=v=>typeof v==="string"&&/^[=+\-@]/.test(v)?"'"+v:v;
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";t.onload=r;t.onerror=j;document.head.append(t)});
+const loadRegs=async f=>S.allRegs?(await Promise.all((S.allEvs||[]).map(e=>regsOf(e.id,f)))).flat():regsOf(S.evId,f);
 const regCount=async id=>{const x=await getDoc(doc(db,"counts",id));return x.exists()?Number(x.data().n)||0:0};
 const syncCount=async id=>{try{const n=(await getCountFromServer(query(collection(db,"registrations"),where("eventId","==",id)))).data().count;await setDoc(doc(db,"counts",id),{n});return n}catch(_){return null}};
 const loadJsQR=()=>window.jsQR?Promise.resolve():new Promise((r,j)=>{const t=document.createElement("script");t.src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";t.onload=r;t.onerror=j;document.head.appendChild(t)});
@@ -293,20 +294,20 @@ const CNT=async(id,a)=>(await getCountFromServer(query(collection(db,"registrati
 const AD={t:0,l:null};async function adminsList(f){if(AD.l&&!f&&Date.now()-AD.t<600000)return AD.l;const q=await getDocs(collection(db,"admins"));AD.t=Date.now();return AD.l=q.docs.map(d=>({id:d.id,...d.data()}))}
 const MON={t:0,D:null};
 
-function drawRegs(f,isAdmin){const ce=S.role==="admin"||S.role==="coordinator",R=S.regs,n=R.filter(r=>r.checkedIn).length,rows=R.filter(r=>(r.name+r.email+r.regId+(r.phone||"")).toLowerCase().includes(f.toLowerCase()));
+function drawRegs(f,isAdmin){const AL=!!S.allRegs,evn=r=>((S.allEvs||[]).find(e=>e.id===r.eventId)||{}).name||"",ce=S.role==="admin"||S.role==="coordinator",R=S.regs,n=R.filter(r=>r.checkedIn).length,rows=R.filter(r=>(r.name+r.email+r.regId+(r.phone||"")+(AL?evn(r):"")).toLowerCase().includes(f.toLowerCase()));
   $("#rl").innerHTML=`<p><b>${R.length}</b> registered · <b>${n}</b> attended · ${R.length?Math.round(n/R.length*100):0}% attendance${rows.length>300?" · showing first 300 (search, or download Excel for all)":""}</p><div class="row"><input id="srch" placeholder="Search name, email or ID" value="${esc(f)}"><span class="fit"><button class="btn alt" id="rf2">Refresh</button> <button class="btn alt" id="csv">Download Excel</button></span></div>
-  <div class="scroll"><table><tr><th>ID</th><th>Name</th><th>Email</th><th>Mobile</th><th>Status</th>${isAdmin||ce?"<th></th>":""}</tr>${rows.slice(0,300).map(r=>`<tr><td>${r.regId}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${esc(r.phone||"")}</td><td>${r.checkedIn?"Checked in":"Registered"}</td>${isAdmin||ce?`<td style="white-space:nowrap">${ce?`<button class="btn alt sm" data-e="${r._id}">Edit</button> `:""}${isAdmin?`${r.checkedIn?`<button class="btn alt sm" data-u="${r._id}">Reverse</button> `:""}<button class="btn alt sm" data-x="${r._id}">Delete</button>`:""}</td>`:""}</tr>`).join("")}</table></div>`;
+  <div class="scroll"><table><tr><th>ID</th>${AL?"<th>Event</th>":""}<th>Name</th><th>Email</th><th>Mobile</th><th>Status</th>${isAdmin||ce?"<th></th>":""}</tr>${rows.slice(0,300).map(r=>`<tr><td>${r.regId}</td>${AL?`<td>${esc(evn(r))}</td>`:""}<td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${esc(r.phone||"")}</td><td>${r.checkedIn?"Checked in":"Registered"}</td>${isAdmin||ce?`<td style="white-space:nowrap">${ce?`<button class="btn alt sm" data-e="${r._id}">Edit</button> `:""}${isAdmin?`${r.checkedIn?`<button class="btn alt sm" data-u="${r._id}">Reverse</button> `:""}<button class="btn alt sm" data-x="${r._id}">Delete</button>`:""}</td>`:""}</tr>`).join("")}</table></div>`;
   $("#srch").oninput=e=>{clearTimeout(drawRegs.t);const v=e.target.value;drawRegs.t=setTimeout(()=>{drawRegs(v,isAdmin);const i=$("#srch");i.focus();i.setSelectionRange(99,99)},180)};
-  $("#csv").onclick=()=>xl(R.map(r=>({ID:r.regId,Name:r.name,Email:r.email,Mobile:r.phone||"",...r.answers,"Checked in":r.checkedIn?"Yes":"No"})),"registrations");
-  $("#rf2").onclick=async()=>{S.regs=await regsOf(S.evId,true);drawRegs("",isAdmin)};
+  $("#csv").onclick=()=>xl(R.map(r=>({ID:r.regId,...(AL?{Event:evn(r)}:{}),Name:r.name,Email:r.email,Mobile:r.phone||"",...r.answers,"Checked in":r.checkedIn?"Yes":"No"})),"registrations");
+  $("#rf2").onclick=async()=>{S.regs=await loadRegs(true);drawRegs("",isAdmin)};
   document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>editReg(b.dataset.e,isAdmin));
   document.querySelectorAll("[data-x]").forEach(b=>b.onclick=async()=>{const r=S.regs.find(q=>q._id===b.dataset.x);if(!r||!confirm(`Delete the registration of ${r.name} (ID ${r.regId})? This cannot be undone.`))return;b.disabled=true;
     try{const w=writeBatch(db);w.delete(doc(db,"registrations",r._id));if(r.email)new Set([r.email,String(r.email).trim(),String(r.email).trim().toLowerCase()]).forEach(em=>w.delete(doc(db,"emails",(r.eventId||S.evId)+"_"+encodeURIComponent(em))));await w.commit();
       addDoc(collection(db,"auditLogs"),{action:"delete",reg:r._id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});await syncCount(r.eventId||S.evId);
-      S.regs=await regsOf(S.evId,true);drawRegs("",true)}catch(x){b.disabled=false;alert("Could not delete: "+x.message)}});
+      S.regs=await loadRegs(true);drawRegs("",true)}catch(x){b.disabled=false;alert("Could not delete: "+x.message)}});
   document.querySelectorAll("[data-u]").forEach(b=>b.onclick=async()=>{if(!confirm("Reverse this check-in?"))return;
     await updateDoc(doc(db,"registrations",b.dataset.u),{checkedIn:false,checkedInAt:null,checkedInBy:null});
-    await addDoc(collection(db,"auditLogs"),{action:"reverse",reg:b.dataset.u,by:S.user.uid,at:serverTimestamp()});S.regs=await regsOf(S.evId,true);drawRegs("",true)})}
+    await addDoc(collection(db,"auditLogs"),{action:"reverse",reg:b.dataset.u,by:S.user.uid,at:serverTimestamp()});S.regs=await loadRegs(true);drawRegs("",true)})}
 
 /* ---- edit a registration (admin + event coordinator) ---- */
 function editReg(id,isAdmin){const r=S.regs.find(q=>q._id===id);if(!r)return;
@@ -330,7 +331,7 @@ function editReg(id,isAdmin){const r=S.regs.find(q=>q._id===id);if(!r)return;
       if(changed){if(r.email)w.delete(eo);w.set(en,{at:serverTimestamp()})}
       await w.commit();
       addDoc(collection(db,"auditLogs"),{action:"edit",reg:r._id,by:S.user.uid,at:serverTimestamp()}).catch(()=>{});
-      close();S.regs=await regsOf(S.evId,true);drawRegs("",isAdmin)
+      close();S.regs=await loadRegs(true);drawRegs("",isAdmin)
     }catch(x){bt.disabled=false;msg.textContent="Could not save: "+x.message+(x.code==="permission-denied"?" (publish the new Firestore rules from Admin > Firebase rules)":"")}}}
 
 async function doCheck(evId,regId,known){const rf=doc(db,"registrations",evId+"_"+regId);
@@ -382,7 +383,7 @@ function deskPane(t){const ALL=S.evId==="ALL",EVS=S.deskEvs||[],EN=id=>(EVS.find
 function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}}
 
 /* ============ EVENT COORDINATOR ============ */
-async function coord(){if(!S.user)return login("Coordinator sign in");if(S.role!=="coordinator")return denied("event coordinator");
+async function coord(){S.allRegs=false;if(!S.user)return login("Coordinator sign in");if(S.role!=="coordinator")return denied("event coordinator");
   const bind=shell("Event coordinator",[["event","Event details"],["regs","Registrants"],["results","Results"]]);let evs;
   try{if(CE.u===S.user.uid&&Date.now()-CE.t<300000)evs=CE.e;else{const q=await getDocs(query(collection(db,"events"),where("coordinatorUids","array-contains",S.user.uid)));evs=q.docs.map(d=>({id:d.id,...d.data()}));CE={u:S.user.uid,t:Date.now(),e:evs}}}
   catch(x){$("#pane").innerHTML=`<p class="muted">Could not load your events: ${esc(x.message)}. Ask the admin to republish the Firestore rules (Admin, Firebase rules tab).</p>`;return}
@@ -410,7 +411,7 @@ async function resultsPane(E){let cur={};try{const s=await getDoc(doc(db,"result
     catch(x){$("#msg").textContent="Could not submit: "+x.message;b.disabled=false}}}
 
 /* ============ ENTRY DESK (separate login and link: #/desk) ============ */
-async function desk(){if(!S.user)return login("Entry desk sign in");if(S.role!=="desk"&&S.role!=="admin")return denied("entry desk team");
+async function desk(){S.allRegs=false;if(!S.user)return login("Entry desk sign in");if(S.role!=="desk"&&S.role!=="admin")return denied("entry desk team");
   let evs;if(S.role==="admin")evs=await allEvents();else if(DE.u===S.user.uid&&Date.now()-DE.t<600000)evs=DE.e;else{const mine=await getDocs(query(collection(db,"events"),where("deskUids","array-contains",S.user.uid))),open_=await getDocs(query(collection(db,"events"),where("status","in",["published","closed"]))),m=new Map();
     mine.docs.forEach(d=>m.set(d.id,{id:d.id,...d.data()}));open_.docs.forEach(d=>{const e={id:d.id,...d.data()};if(!(e.deskUids||[]).length)m.set(d.id,e)});evs=[...m.values()];DE={u:S.user.uid,t:Date.now(),e:evs}}
   const bind=shell("Entry desk",[["desk","Verify entry"]]);
@@ -497,9 +498,12 @@ async function updTab(){$("#pane").innerHTML="Loading…";
   document.querySelectorAll("[data-ud]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this update?"))return;try{await deleteDoc(doc(db,"updates",b.dataset.ud));UL.l=null;if(S.updEdit===b.dataset.ud)S.updEdit=null;updTab()}catch(x){M("Could not delete: "+x.message)}})}
 
 async function regTab(){const evs=await allEvents();if(!evs.length)return $("#pane").innerHTML=`<p class="muted">Create an event first.</p>`;
-  S.evId=S.evId||evs[0].id;$("#pane").innerHTML=evSelect(evs)+`<div id="rl">Loading…</div>`;
-  const load=async()=>{S.regs=await regsOf(S.evId);drawRegs("",true)};$("#evsel").onchange=e=>{S.evId=e.target.value;load().then(()=>tidy())};
-  const tidy=async()=>{if(tidy.d&&tidy.d[S.evId])return;(tidy.d=tidy.d||{})[S.evId]=1;try{const regs=await regsOf(S.evId,true),have=new Set(regs.map(r=>encodeURIComponent(String(r.email||"").trim().toLowerCase()))),all=await getDocs(collection(db,"emails")),pre=S.evId+"_",stale=all.docs.filter(d=>d.id.startsWith(pre)&&!have.has(d.id.slice(pre.length)));for(let i=0;i<stale.length;i+=400){const w=writeBatch(db);stale.slice(i,i+400).forEach(d=>w.delete(d.ref));await w.commit()}}catch(_){}};
+  S.allEvs=evs;S.evId=S.evId||evs[0].id;
+  $("#pane").innerHTML=`<label>Event<select id="evsel"><option value="ALL" ${S.allRegs?"selected":""}>All events</option>${evs.map(e=>`<option value="${e.id}" ${!S.allRegs&&e.id===S.evId?"selected":""}>${esc(e.name)}</option>`).join("")}</select></label><div id="rl">Loading…</div>`;
+  const load=async()=>{S.regs=await loadRegs();drawRegs("",true)};
+  const tidy=async()=>{const ids=(S.allRegs?evs.map(e=>e.id):[S.evId]).filter(id=>!(tidy.d=tidy.d||{})[id]);if(!ids.length)return;ids.forEach(id=>tidy.d[id]=1);
+    try{const all=await getDocs(collection(db,"emails"));for(const id of ids){const regs=await regsOf(id,true),have=new Set(regs.map(r=>encodeURIComponent(String(r.email||"").trim().toLowerCase()))),pre=id+"_",stale=all.docs.filter(d=>d.id.startsWith(pre)&&!have.has(d.id.slice(pre.length)));for(let i=0;i<stale.length;i+=400){const w=writeBatch(db);stale.slice(i,i+400).forEach(d=>w.delete(d.ref));await w.commit()}}}catch(_){}};
+  $("#evsel").onchange=e=>{if(e.target.value==="ALL")S.allRegs=true;else{S.allRegs=false;S.evId=e.target.value}load().then(tidy)};
   load().then(tidy)}
 
 async function teamTab(){const [T,evs]=await Promise.all([adminsList(),allEvents()]);
@@ -806,12 +810,14 @@ service cloud.firestore {
         && (request.auth.uid in eventDoc(id).get('deskUids', [])
             || eventDoc(id).get('deskUids', []).size() == 0);
     }
-    // Auto-close: blocks a registration once the counter (written in the same batch) passes the event's max.
+    // Auto-close: a registration must raise the counter by exactly 1 in the same batch, and the counter may not pass the event's max.
     function underMax(eid) {
       let ev = eventDoc(eid);
       let m = string(ev.get('max', ''));
+      let c = /databases/$(database)/documents/counts/$(eid);
       return ev.get('autoClose', true) == false || m == '' || m == '0'
-        || getAfter(/databases/$(database)/documents/counts/$(eid)).data.n <= int(m);
+        || (getAfter(c).data.n <= int(m)
+            && (exists(c) ? getAfter(c).data.n == get(c).data.n + 1 : getAfter(c).data.n == 1));
     }
 
     // ---------- team (admins collection) ----------
